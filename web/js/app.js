@@ -877,6 +877,61 @@ function wire() {
     if (e.target.closest('[data-goto-login]')) openLogin();
   });
 
+  // ── 내 주식 관리 · 거래 입력 시트
+  el('#btnAddStock').addEventListener('click', () => openSheet());
+  els('[data-close]').forEach((b) => b.addEventListener('click', closeSheet));
+  els('[data-close-more]').forEach((b) => b.addEventListener('click', closeMore));
+  el('#btnSaveTx').addEventListener('click', submitTx);
+  el('#btnDeleteTx').addEventListener('click', deleteTx);
+  el('#txForm').addEventListener('input', updatePreview);
+  el('#txForm').addEventListener('submit', (e) => { e.preventDefault(); submitTx(); });
+  el('#pickedChip').addEventListener('click', () => openSheet(state.editingTxId));
+  el('#pickSearch').addEventListener('input', doSearch);
+  el('#btnUseQuote').addEventListener('click', () => {
+    const t = state.picked?.ticker;
+    const q = t && state.db.quotes[t];
+    if (!q || !Number.isFinite(q.price)) return toast('저장된 현재가가 없습니다', 'err');
+    el('#txForm').price.value = q.price;
+    updatePreview();
+    return toast(`현재가 ${q.price.toLocaleString('ko-KR')} 적용`);
+  });
+  el('#pickResults').addEventListener('click', (e) => {
+    const pick = e.target.closest('[data-pick]');
+    if (pick) return choose(JSON.parse(pick.dataset.pick));
+    const raw = e.target.closest('[data-use-raw]');
+    if (raw) {
+      const ticker = raw.dataset.useRaw.toUpperCase();
+      const known = lookup(ticker);
+      return choose(known || { ticker, name: ticker, ...guessAsset(ticker) });
+    }
+    return null;
+  });
+
+  el('#manageList').addEventListener('click', (e) => {
+    const trade = e.target.closest('[data-id]');
+    if (trade) return openSheet(trade.dataset.id);
+
+    const buy = e.target.closest('[data-buy]');
+    if (buy) return openSheetFor(buy.dataset.buy, 'BUY');
+    const sell = e.target.closest('[data-sell]');
+    if (sell) return openSheetFor(sell.dataset.sell, 'SELL');
+
+    const drop = e.target.closest('[data-drop]');
+    if (drop) return dropStock(drop.dataset.drop);
+
+    const pr = e.target.closest('[data-price]');
+    if (pr) return editPrice(pr.dataset.price);
+
+    const head = e.target.closest('[data-stock]');
+    if (head) {
+      state.openStock = state.openStock === head.dataset.stock ? null : head.dataset.stock;
+      ui.renderManage(state.pf, state.db, {
+        search: el('#txSearch').value, open: state.openStock,
+      });
+    }
+    return null;
+  });
+
   // 현황 화면은 카드가 통째로 다시 그려지므로 한 곳에서 위임 처리한다
   el('#screen-home').addEventListener('click', (e) => {
     const basis = e.target.closest('[data-basis]');
