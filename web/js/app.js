@@ -29,6 +29,7 @@ function recompute() {
 function render() {
   recompute();
   const { pf, db } = state;
+  renderLoginBar();
   ui.renderSummary(pf);
   ui.renderTopWarnings(pf, state.signals, { expanded: state.tipsExpanded });
   ui.renderStatus(pf, db);
@@ -38,6 +39,26 @@ function render() {
   ui.renderManage(pf, db, { search: el('#txSearch').value, open: state.openStock });
   renderAccountList();
   if (state.screen === 'settings') renderSettings();
+}
+
+// 로그인 입구를 설정 3단계 안에만 두면 아무도 못 찾는다. 맨 위에 꺼내둔다.
+function renderLoginBar() {
+  const configured = cloud.isConfigured();
+  const session = configured ? cloud.loadSession() : null;
+  el('#btnLogin').hidden = !configured || Boolean(session);
+
+  if (!configured || session) { el('#loginBar').innerHTML = ''; return; }
+  el('#loginBar').innerHTML = `
+    <button class="status" data-goto-login>
+      <span class="dot" style="background:var(--tint)"></span>
+      <span>로그인하면 폰·컴퓨터에서 같은 데이터를 볼 수 있습니다</span>
+      <span class="chev">›</span>
+    </button>`;
+}
+
+function openLogin() {
+  showScreen('settings');
+  setTimeout(() => openMore('sync'), 80);
 }
 
 async function save() {
@@ -702,6 +723,10 @@ function renderAccountList() {
 function wire() {
   els('.seg-item').forEach((t) => t.addEventListener('click', () => showScreen(t.dataset.screen)));
   el('#btnAdd').addEventListener('click', () => showScreen('trades'));
+  el('#btnLogin').addEventListener('click', openLogin);
+  el('#loginBar').addEventListener('click', (e) => {
+    if (e.target.closest('[data-goto-login]')) openLogin();
+  });
   el('#btnAddStock').addEventListener('click', () => openSheet());
   els('[data-close]').forEach((b) => b.addEventListener('click', closeSheet));
   els('[data-close-more]').forEach((b) => b.addEventListener('click', closeMore));
@@ -819,6 +844,7 @@ function wire() {
         await syncPull({ quiet: true });
         await cloud.push(store.payload()).catch(() => {});
         el('#moreBody').innerHTML = renderSync();
+        renderLoginBar();
         toast(signingUp ? '가입하고 연결됐습니다' : '로그인됐습니다');
       } catch (err) { toast(err.message, 'err'); }
       return;
@@ -833,6 +859,7 @@ function wire() {
       if (!confirm('로그아웃합니다. 이 기기의 데이터는 그대로 남습니다.')) return;
       cloud.clearSession();
       el('#moreBody').innerHTML = renderSync();
+      renderLoginBar();
       return;
     }
     if (t.closest('#btnSyncStart')) {
@@ -974,9 +1001,18 @@ async function main() {
   render();
   if (store.isFirstRun) toast('예시 데이터로 시작합니다');
   loadSiteQuotes();
-  cloud.loadConfig().then(() => { if (remote()) syncPull({ quiet: true }); });
+  cloud.loadConfig().then(() => {
+    renderLoginBar();
+    if (remote()) syncPull({ quiet: true });
+  });
 
   if ('serviceWorker' in navigator) {
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 }
