@@ -1,101 +1,253 @@
 // 화면 그리기. 상태 변경은 app.js 가 하고 여기서는 DOM 만 만든다.
-// 표(table) 를 걷어내고 iOS 설정앱 같은 리스트로 통일했다.
 
 import { num, signed, pct, price, plClass, esc, el, relTime } from './util.js';
 import { ACTION, bandOf, consolidate, currentValue, formatValue } from './rules.js';
 
-const COUNTRY_FLAG = { KR: '한국', US: '미국', VN: '베트남', JP: '일본', CN: '중국', HK: '홍콩' };
+const COUNTRY_NAME = { KR: '한국', US: '미국', VN: '베트남', JP: '일본', CN: '중국', HK: '홍콩', TW: '대만' };
 
 // 검증된 카테고리 팔레트 8색 + '기타'. 순서 고정이고 절대 돌려쓰지 않는다.
-// 9번째부터는 색을 새로 만들지 않고 '기타'로 접는다.
 const SERIES = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)',
   'var(--s5)', 'var(--s6)', 'var(--s7)', 'var(--s8)'];
 const OTHER = 'var(--s9)';
 const MAX_SERIES = 8;
 
-export const SORTS = {
-  amount: '금액순',
-  gain: '수익률순',
-  name: '이름순',
-};
+export const SORTS = { amount: '금액순', gain: '수익률순', name: '이름순' };
+export const BASES = { amount: '금액 기준', shares: '수량 기준' };
 
 export function sortPositions(positions, key) {
   const list = [...positions];
-  if (key === 'gain') {
-    return list.sort((a, b) => (b.returnPct ?? -Infinity) - (a.returnPct ?? -Infinity));
-  }
+  if (key === 'gain') return list.sort((a, b) => (b.returnPct ?? -1e9) - (a.returnPct ?? -1e9));
   if (key === 'name') return list.sort((a, b) => a.asset.name.localeCompare(b.asset.name, 'ko'));
   return list.sort((a, b) => (b.marketValueBase || 0) - (a.marketValueBase || 0));
 }
 
-// ─────────────────────────────── 비중 차트 (최상단)
-// 하는 일은 '전체에서 각자 얼마씩 차지하나' -> 100% 누적 가로 막대 하나면 충분하다.
-// 색만으로 구분되지 않게 아래 범례에 이름·%·금액을 항상 같이 적는다.
-export function renderWeightChart(pf, db, dim = 'ticker') {
-  const src = dim === 'ticker'
-    ? pf.positions.filter((p) => p.hasPrice).map((p) => ({
-      key: p.ticker, label: p.asset.name, value: p.marketValueBase, weight: p.weight,
-    }))
-    : (pf.breakdowns[dim] || []).map((b) => ({
-      key: b.key,
-      label: dim === 'country' ? (COUNTRY_FLAG[b.key] || b.key) : b.key,
-      value: b.marketValue, weight: b.weight,
-    }));
-
-  if (!src.length) {
-    el('#chartCard').innerHTML = `<div class="chart"><div class="empty">
-      종목을 추가하면 비중이 여기 보입니다.</div></div>`;
-    return;
-  }
-
-  src.sort((a, b) => b.value - a.value);
-  const items = src.slice(0, MAX_SERIES);
-  const rest = src.slice(MAX_SERIES);
-  if (rest.length) {
-    items.push({
-      key: '__other', label: `기타 ${rest.length}개`,
-      value: rest.reduce((s2, x) => s2 + x.value, 0),
-      weight: rest.reduce((s2, x) => s2 + x.weight, 0),
-    });
-  }
-  const color = (i) => (items[i].key === '__other' ? OTHER : SERIES[i]);
-
-  const segs = items.map((it, i) => `<div class="seg" style="flex:${Math.max(it.weight, 0.4)};
-    background:${color(i)}" title="${esc(it.label)} ${it.weight.toFixed(1)}%"></div>`).join('');
-
-  const legend = items.map((it, i) => `<button class="lg" data-legend="${esc(it.key)}">
-      <span class="sw" style="background:${color(i)}"></span>
-      <span class="nm">${esc(it.label)}</span>
-      <span class="pc">${pct(it.weight, 1)}</span>
-      <span class="am">${num(it.value)}</span>
-    </button>`).join('');
-
-  const tabs = { ticker: '종목', country: '국가', sector: '섹터' };
-  el('#chartCard').innerHTML = `<div class="chart">
-    <div class="chart-head">
-      <h2>비중</h2>
-      <div class="mini-seg">
-        ${Object.entries(tabs).map(([k, v]) =>
-    `<button data-chart-dim="${k}" class="${k === dim ? 'on' : ''}">${v}</button>`).join('')}
-      </div>
+// ─────────────────────────────── 상단 파란 카드
+export function renderHero(pf) {
+  const cur = pf.baseCurrency;
+  const now = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  el('#hero').innerHTML = `<div class="hero">
+    <div class="hero-top">
+      <span class="lb">총 자산</span>
+      <button class="more" data-goto="trades">자산 상세 ›</button>
     </div>
-    <div class="stack">${segs}</div>
-    <div class="legend">${legend}</div>
+    <div class="amount">${num(pf.totalValue)}<span style="font-size:19px;margin-left:4px">${esc(cur)}</span></div>
+    <div class="hero-grid">
+      <div><div class="k">평가손익</div><div class="v">${signed(pf.unrealizedPl)}</div></div>
+      <div><div class="k">수익률</div><div class="v">${pct(pf.returnPct, 2, true)}</div></div>
+    </div>
+    <div class="hero-foot">
+      <span class="l">오늘 변동 ${signed(pf.dayPl)}${dayPctText(pf)}</span>
+      <span class="r">기준: 오늘 ${esc(now)}</span>
+    </div>
   </div>`;
 }
 
-// ─────────────────────────────── 맨 위 요약 (한두 줄)
-export function renderSummary(pf) {
-  const pl = pf.unrealizedPl;
-  el('#summary').innerHTML = `
-    <div class="big">${num(pf.totalValue)}<span class="cur">${esc(pf.baseCurrency)}</span></div>
-    <div class="sub">
-      <b class="${plClass(pl)}">${signed(pl)} (${pct(pf.returnPct, 1, true)})</b>
-      · 오늘 <b class="${plClass(pf.dayPl)}">${signed(pf.dayPl)}</b>
+function dayPctText(pf) {
+  const base = pf.totalValue - pf.dayPl;
+  if (!base || !pf.dayPl) return '';
+  return ` (${pct((pf.dayPl / base) * 100, 2, true)})`;
+}
+
+export function renderSyncChip(session, serverOk) {
+  const box = el('#syncChip');
+  if (session) {
+    box.innerHTML = `<div class="synced"><span class="dot"></span>
+      포트폴리오 동기화됨 · ${esc(session.email || '')}</div>`;
+  } else if (serverOk === false) {
+    box.innerHTML = `<button class="synced off" data-goto-login><span class="dot"></span>
+      이 기기에만 저장 중 · 로그인하면 어디서나 ›</button>`;
+  } else {
+    box.innerHTML = '';
+  }
+}
+
+// ─────────────────────────────── 국가별 (도넛)
+export function renderCountryCard(pf, db, basis) {
+  const items = allocItems(pf, db, 'country', basis);
+  const head = cardHead('국가별 비중', 'country', basis);
+  if (!items.length) {
+    el('#cardCountry').innerHTML = `${head}<div class="empty">종목을 추가하면 보입니다.</div>`;
+    return;
+  }
+  el('#cardCountry').innerHTML = `${head}
+    <div class="donut-wrap">
+      ${donut(items, pf)}
+      <div class="alloc">
+        <div class="alloc-h"><span>국가</span><span style="text-align:right">현재 비중 / 목표 비중</span><span></span></div>
+        ${items.map(allocRow).join('')}
+        ${sumRow(items)}
+      </div>
     </div>`;
 }
 
-// 시세 상태 한 줄 (탭하면 설정으로)
+function donut(items, pf) {
+  const R = 52;
+  const C = 2 * Math.PI * R;
+  let off = 0;
+  const arcs = items.map((it, i) => {
+    const len = Math.max((it.weight / 100) * C, 1.5);
+    const seg = `<circle cx="66" cy="66" r="${R}" fill="none" stroke="${it.color}"
+      stroke-width="21" stroke-dasharray="${Math.max(len - 2.5, 1)} ${C - len + 2.5}"
+      stroke-dashoffset="${-off}" transform="rotate(-90 66 66)"/>`;
+    off += len;
+    return seg;
+  }).join('');
+  return `<div class="donut">
+    <svg viewBox="0 0 132 132" width="132" height="132" role="img" aria-label="국가별 비중">${arcs}</svg>
+    <div class="mid"><div class="t">총 자산</div><div class="n">${num(pf.totalValue)}원</div></div>
+  </div>`;
+}
+
+// ─────────────────────────────── 섹터별 (가로 막대)
+export function renderSectorCard(pf, db, basis) {
+  const items = allocItems(pf, db, 'sector', basis);
+  const head = cardHead('섹터별 비중', 'sector', basis);
+  if (!items.length) {
+    el('#cardSector').innerHTML = `${head}<div class="empty">종목을 추가하면 보입니다.</div>`;
+    return;
+  }
+  const max = Math.max(...items.map((i) => i.weight), 1);
+  el('#cardSector').innerHTML = `${head}
+    <div class="alloc-h" style="grid-template-columns:70px 1fr auto 22px;display:grid;gap:10px">
+      <span>섹터</span><span></span><span style="text-align:right">현재 비중 / 목표</span><span></span>
+    </div>
+    ${items.map((it) => `<div class="sbar-r">
+      <span class="nm">${esc(it.label)}</span>
+      <span class="track">
+        <i class="${it.state}" style="width:${Math.min((it.weight / max) * 100, 100).toFixed(1)}%"></i>
+        ${it.target === null ? '' : `<u style="left:${Math.min((it.target / max) * 100, 100).toFixed(1)}%"></u>`}
+      </span>
+      <span class="vs">${it.weight.toFixed(1)}% <em>/ ${it.target === null ? '—' : `${it.target}%`}</em></span>
+      ${markFor(it)}
+    </div>`).join('')}
+    ${sumRow(items, '70px 1fr auto 22px')}`;
+}
+
+// ─────────────────────────────── 공통
+function cardHead(title, dim, basis) {
+  return `<div class="card-head">
+    <h2>${esc(title)}</h2>
+    <button class="gear" data-goto-target="${dim}">⚙ 비중 설정</button>
+    <span class="spacer"></span>
+    <div class="toggle">
+      ${Object.entries(BASES).map(([k, v]) =>
+    `<button data-basis="${k}" class="${k === basis ? 'on' : ''}">${v}</button>`).join('')}
+    </div>
+  </div>`;
+}
+
+function allocItems(pf, db, dim, basis) {
+  const buckets = pf.breakdowns[dim] || [];
+  if (!buckets.length) return [];
+  const group = db.targets?.[dim];
+  const totalQty = buckets.reduce((s, b) => s + (b.quantity || 0), 0);
+
+  const rows = buckets.map((b) => {
+    const weight = basis === 'shares'
+      ? (totalQty ? (b.quantity / totalQty) * 100 : 0)
+      : b.weight;
+    const item = group?.items?.[b.key];
+    const target = (item && item.target !== null && item.target !== undefined && item.target !== '')
+      ? Number(item.target) : null;
+    let state = '';
+    if (target !== null && item) {
+      const { lo, hi, mode } = bandOf(item, group.tolerance);
+      // 수량 기준으로 볼 때도 판정은 설정한 기준(보통 비중%)으로 한다
+      const cur = currentValue(b, mode);
+      if (hi !== null && cur > hi) state = 'over';
+      else if (lo !== null && cur < lo) state = 'under';
+      else state = 'ok';
+    }
+    return {
+      key: b.key,
+      label: dim === 'country' ? (COUNTRY_NAME[b.key] || b.key) : b.key,
+      weight, target, state, value: b.marketValue,
+    };
+  }).sort((a, b) => b.weight - a.weight);
+
+  const top = rows.slice(0, MAX_SERIES);
+  const rest = rows.slice(MAX_SERIES);
+  if (rest.length) {
+    top.push({
+      key: '__other', label: `기타 ${rest.length}개`, state: '', target: null,
+      weight: rest.reduce((s, x) => s + x.weight, 0),
+      value: rest.reduce((s, x) => s + x.value, 0),
+    });
+  }
+  top.forEach((it, i) => { it.color = it.key === '__other' ? OTHER : SERIES[i]; });
+  return top;
+}
+
+function allocRow(it) {
+  return `<div class="alloc-r">
+    <span class="nm"><i class="sw" style="background:${it.color}"></i><span>${esc(it.label)}</span></span>
+    <span class="vs">${it.weight.toFixed(1)}% <em>/ ${it.target === null ? '—' : `${it.target}%`}</em></span>
+    ${markFor(it)}
+  </div>`;
+}
+
+// 색만으로 상태를 나타내지 않도록 기호(!, ✓)를 같이 넣는다
+function markFor(it) {
+  if (!it.state) return '<span class="mark none" title="목표 미설정">·</span>';
+  if (it.state === 'over') return '<span class="mark over" title="비중 많음">!</span>';
+  if (it.state === 'under') return '<span class="mark under" title="비중 적음">!</span>';
+  return '<span class="mark ok" title="적정">✓</span>';
+}
+
+function sumRow(items, cols) {
+  const now = items.reduce((s, i) => s + i.weight, 0);
+  const tgt = items.reduce((s, i) => s + (i.target || 0), 0);
+  const style = cols ? ` style="grid-template-columns:${cols}"` : '';
+  return `<div class="alloc-sum"${style}>
+    <span>합계</span>${cols ? '<span></span>' : ''}
+    <span style="text-align:right">${now.toFixed(0)}% / ${tgt ? `${tgt.toFixed(0)}%` : '—'}</span>
+    <span></span></div>`;
+}
+
+// ─────────────────────────────── 보유 종목 표
+export function renderHoldingsCard(pf, sort) {
+  if (!pf.positions.length) {
+    el('#cardHoldings').innerHTML = `<div class="card-head"><h2>보유 종목</h2></div>
+      <div class="empty">아직 종목이 없습니다.<br>오른쪽 위 <b>내 주식 관리</b> 에서 추가하세요.</div>`;
+    return;
+  }
+  const rows = sortPositions(pf.positions, sort).map((p) => `
+    <button class="hold-r" data-ticker="${esc(p.ticker)}">
+      <span class="who">
+        <span class="fl">${esc(p.asset.country)}</span>
+        <span class="nmw">
+          <span class="n1">${esc(p.asset.name)}</span>
+          <span class="n2">${esc(p.ticker)}</span>
+        </span>
+      </span>
+      <span class="num">${num(p.quantity, p.quantity % 1 ? 2 : 0)}주</span>
+      <span class="num">${price(p.avgPriceLocal, p.asset.currency)}</span>
+      <span class="num">${p.hasPrice ? num(p.marketValueBase) : '—'}</span>
+      <span class="pl ${plClass(p.unrealizedPlBase)}">${signed(p.unrealizedPlBase)}
+        <small>${pct(p.returnPct, 2, true)}</small></span>
+      <span class="chev">›</span>
+    </button>`).join('');
+
+  el('#cardHoldings').innerHTML = `
+    <div class="card-head">
+      <h2>보유 종목</h2>
+      <span class="spacer"></span>
+      <div class="toggle" id="sortSeg">
+        ${Object.entries(SORTS).map(([k, v]) =>
+    `<button data-sort="${k}" class="${k === sort ? 'on' : ''}">${v}</button>`).join('')}
+      </div>
+    </div>
+    <div class="scroll-x"><div>
+      <div class="hold-h">
+        <span>종목명</span><span style="text-align:right">보유 수량</span>
+        <span style="text-align:right">평균 단가</span><span style="text-align:right">현재 가치</span>
+        <span style="text-align:right">평가손익(수익률)</span><span></span>
+      </div>
+      ${rows}
+    </div></div>`;
+}
+
+// ─────────────────────────────── 시세 상태 한 줄
 export function renderStatus(pf, db) {
   const fake = pf.positions.filter((p) => p.quote?.stale).length;
   const missing = pf.missingPrices.length;
@@ -103,12 +255,11 @@ export function renderStatus(pf, db) {
     .filter((c) => c !== pf.baseCurrency && (db.fx?.sources?.[c] || '') === '예시값');
   const newest = Object.values(db.quotes || {}).map((q) => q.asOf).filter(Boolean).sort().pop();
 
+  if (!pf.positions.length) { el('#statusBar').innerHTML = ''; return; }
   let cls = '';
   let text;
-  if (!pf.positions.length) {
-    text = '종목을 추가하면 여기에 시세 상태가 표시됩니다';
-  } else if (fake || missing || fakeFx.length) {
-    cls = 'warn';
+  if (fake || missing || fakeFx.length) {
+    cls = 'off';
     const bits = [];
     if (fake) bits.push(`${fake}종목 예시 시세`);
     if (missing) bits.push(`${missing}종목 시세 없음`);
@@ -117,87 +268,22 @@ export function renderStatus(pf, db) {
   } else {
     text = `시세 ${relTime(newest)} 기준`;
   }
-  el('#statusBar').innerHTML =
-    `<button class="status ${cls}" data-goto-quotes>
-       <span class="dot"></span><span>${esc(text)}</span><span class="chev">›</span>
-     </button>`;
+  el('#statusBar').innerHTML = `<div style="padding:12px 16px 0">
+    <button class="synced ${cls}" style="margin:0" data-goto-quotes>
+      <span class="dot"></span><span>${esc(text)}</span><span>›</span></button></div>`;
 }
 
-// ─────────────────────────────── 내 종목
-export function renderPositions(pf, sort = 'amount') {
-  el('#posCount').textContent = pf.positions.length ? `${pf.positions.length}종목` : '';
-  if (!pf.positions.length) {
-    el('#listPositions').innerHTML =
-      `<div class="empty">아직 종목이 없습니다.<br>오른쪽 위 <b>추가</b> 를 눌러 시작하세요.</div>`;
-    return;
-  }
-  el('#listPositions').innerHTML = sortPositions(pf.positions, sort).map((p) => `
-    <button class="row tap" data-ticker="${esc(p.ticker)}">
-      <span>
-        <div class="main-txt">${esc(p.asset.name)}</div>
-        <div class="sub-txt">${num(p.quantity, p.quantity % 1 ? 2 : 0)}주 ·
-          평단 ${price(p.avgPriceLocal, p.asset.currency)}</div>
-      </span>
-      <span class="right">
-        <div class="v">${pct(p.weight, 1)}</div>
-        <div class="s">${p.hasPrice ? num(p.marketValueBase) : '—'}
-          <b class="${plClass(p.returnPct)}">${pct(p.returnPct, 1, true)}</b></div>
-      </span>
-    </button>`).join('');
-}
-
-// ─────────────────────────────── 국가별 / 섹터별 비중
-export function renderBreakdown(target, pf, db, dim) {
-  const buckets = pf.breakdowns[dim] || [];
-  const group = db.targets?.[dim];
-  if (!buckets.length) {
-    el(target).innerHTML = '<div class="empty">표시할 항목이 없습니다.</div>';
-    return;
-  }
-  el(target).innerHTML = buckets.map((b) => {
-    const item = group?.items?.[b.key];
-    let pill = '';
-    let barCls = '';
-    let marker = '';
-    let sub = '';
-
-    if (item && item.target !== null && item.target !== undefined && item.target !== '') {
-      const { lo, hi, mode, target } = bandOf(item, group.tolerance);
-      const cur = currentValue(b, mode);
-      if (hi !== null && cur > hi) { pill = '<span class="pill over">많음</span>'; barCls = 'over'; }
-      else if (lo !== null && cur < lo) { pill = '<span class="pill under">적음</span>'; barCls = 'under'; }
-      else pill = '<span class="pill ok">적정</span>';
-      sub = `목표 ${formatValue(target, mode, pf.baseCurrency)}`;
-      if (mode === 'weight') marker = `<u style="left:${Math.min(target, 100).toFixed(1)}%"></u>`;
-    } else {
-      sub = '목표 미설정';
-    }
-
-    const label = dim === 'country' ? (COUNTRY_FLAG[b.key] || b.key) : b.key;
-    return `<div class="row">
-      <span>
-        <div class="main-txt">${esc(label)}</div>
-        <div class="sub-txt">${esc(sub)} · ${num(b.marketValue)}</div>
-        <div class="bar"><i class="${barCls}" style="width:${Math.min(b.weight, 100).toFixed(1)}%"></i>${marker}</div>
-      </span>
-      <span class="right">
-        <div class="v">${pct(b.weight, 1)}</div>
-        <div class="s">${pill}</div>
-      </span>
-    </div>`;
-  }).join('');
-}
-
-// ─────────────────────────────── 경고 (맨 위에 한 줄씩 작게)
-// 국가·섹터·종목 규칙이 사실상 같은 매매를 가리키는 경우가 많아서,
-// 주문서 합산(consolidate)을 거쳐 종목당 한 줄만 보여준다.
+// ─────────────────────────────── 매매 안내
 const MAX_TIPS = 4;
 
 export function renderTopWarnings(pf, signals, { expanded = false } = {}) {
   const plan = consolidate(signals, pf);
   const bypassed = signals.filter((s) => s.status === 'BYPASSED');
-  if (!plan.length && !bypassed.length) { el('#topWarn').innerHTML = ''; return; }
+  const badge = el('#alertCount');
+  badge.hidden = !plan.length;
+  badge.textContent = String(plan.length);
 
+  if (!plan.length && !bypassed.length) { el('#topWarn').innerHTML = ''; return; }
   const shown = expanded ? plan : plan.slice(0, MAX_TIPS);
   const rows = shown.map((i) => {
     const sell = i.action === 'SELL';
@@ -207,30 +293,24 @@ export function renderTopWarnings(pf, signals, { expanded = false } = {}) {
       <span class="mk">${sell ? '−' : '+'}</span>
       <span class="tx"><b>${esc(i.label)}</b> ${ACTION[i.action]}
         ${num(i.amountBase)}${i.shares ? ` · ${num(i.shares, 1)}주` : ''}</span>
-      <span class="amt">${esc(why + more)}</span>
-    </button>`;
+      <span class="amt">${esc(why + more)}</span></button>`;
   }).join('');
-
   const rest = plan.length - shown.length;
   const moreRow = rest > 0
     ? `<button class="tip mute" data-expand><span class="mk">+</span>
-        <span class="tx">${rest}건 더 보기</span></button>`
-    : '';
+        <span class="tx">${rest}건 더 보기</span></button>` : '';
   const byRow = bypassed.length
     ? `<button class="tip mute" data-jump="bypass"><span class="mk">×</span>
         <span class="tx">예외 처리 ${bypassed.length}건</span>
-        <span class="amt">${esc(bypassed.slice(0, 2).map((s) => s.label).join(', '))}</span></button>`
-    : '';
+        <span class="amt">${esc(bypassed.slice(0, 2).map((s) => s.label).join(', '))}</span></button>` : '';
   el('#topWarn').innerHTML = `<div class="tips">${rows}${moreRow}${byRow}</div>`;
 }
 
-// ─────────────────────────────── 관리 화면 (종목별로 접히는 매매 내역)
+// ─────────────────────────────── 관리 화면
 export function renderManage(pf, db, { search = '', open = null } = {}) {
   const q = search.trim().toLowerCase();
   const rows = pf.positions.filter((p) => !q
     || [p.asset.name, p.ticker].some((v) => String(v).toLowerCase().includes(q)));
-
-  // 전량 매도해서 보유는 없지만 기록은 남은 종목도 보여준다
   const held = new Set(pf.positions.map((p) => p.ticker));
   const closed = [...new Set(db.transactions.map((t) => t.ticker))]
     .filter((t) => !held.has(t))
@@ -264,7 +344,7 @@ export function renderManage(pf, db, { search = '', open = null } = {}) {
           <span class="mut" style="font-size:12px">수정 ›</span>
         </button>`).join('') || '<div class="trade mut">매매 내역이 없습니다</div>'}
         <button class="trade" data-price="${esc(ticker)}">
-          <span class="sd" style="color:var(--tint)">현재가</span>
+          <span class="sd" style="color:var(--brand)">현재가</span>
           <span style="flex:1">${quoteLine(db, ticker, cur)}</span>
           <span class="mut" style="font-size:12px">저장 ›</span>
         </button>
@@ -283,10 +363,8 @@ export function renderManage(pf, db, { search = '', open = null } = {}) {
       `<div class="v">${p.hasPrice ? num(p.marketValueBase) : '—'}</div>
        <div class="s ${plClass(p.returnPct)}">${pct(p.returnPct, 1, true)}</div>`,
     )),
-    ...closed.map((t) => block(
-      t, db.assets[t]?.name || t, '보유 없음 (기록만 남음)',
-      '<div class="s mut">청산</div>',
-    )),
+    ...closed.map((t) => block(t, db.assets[t]?.name || t, '보유 없음 (기록만 남음)',
+      '<div class="s mut">청산</div>')),
   ].join('');
 }
 
@@ -303,7 +381,7 @@ export function renderPickResults(results, query) {
     el('#pickResults').innerHTML = query
       ? `<div class="empty">사전에 없는 종목입니다.<br>
            <b>${esc(query)}</b> 를 티커로 그대로 쓰려면 아래를 누르세요.
-           <div style="margin-top:12px"><button class="btn-plain strong" data-use-raw="${esc(query)}">
+           <div style="margin-top:12px"><button class="btn-plain" data-use-raw="${esc(query)}">
              "${esc(query)}" 직접 등록</button></div></div>`
       : '<div class="empty">종목 이름이나 코드를 입력하세요.</div>';
     return;

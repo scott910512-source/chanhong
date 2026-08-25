@@ -2,11 +2,12 @@
 
 import { Store, guessAsset, naturalKey } from './store.js';
 import { buildPortfolio } from './engine.js';
-import { BypassRegistry, evaluate } from './rules.js';
+import { bandOf, BypassRegistry, currentValue, evaluate } from './rules.js';
 import { providerStatus, refreshQuotes, fromSiteFile } from './quotes.js';
 import { search as searchTickers, lookup } from './tickers.js';
 import * as sync from './sync.js';
 import * as cloud from './cloud.js';
+import { buildXlsx } from './xlsx.js';
 import * as ui from './ui.js';
 import { el, els, esc, num, parseNum, toast, today, price as fmtPrice } from './util.js';
 
@@ -14,7 +15,7 @@ const store = new Store();
 const state = {
   db: null, pf: null, signals: [], bypassReg: null,
   screen: 'home', editingTxId: null, picked: null,
-  sort: 'amount', chartDim: 'ticker',
+  sort: 'amount', basis: 'amount',
   installPrompt: null, fetchLog: [],
 };
 
@@ -31,40 +32,26 @@ function render() {
   recompute();
   const { pf, db } = state;
   renderLoginBar();
-  ui.renderSummary(pf);
+  ui.renderHero(pf);
   ui.renderTopWarnings(pf, state.signals, { expanded: state.tipsExpanded });
+  ui.renderCountryCard(pf, db, state.basis);
+  ui.renderSectorCard(pf, db, state.basis);
+  ui.renderHoldingsCard(pf, state.sort);
   ui.renderStatus(pf, db);
-  ui.renderWeightChart(pf, db, state.chartDim);
-  renderSortSeg();
-  ui.renderPositions(pf, state.sort);
-  ui.renderBreakdown('#listCountry', pf, db, 'country');
-  ui.renderBreakdown('#listSector', pf, db, 'sector');
   ui.renderManage(pf, db, { search: el('#txSearch').value, open: state.openStock });
   renderAccountList();
   if (state.screen === 'settings') renderSettings();
 }
 
-// 로그인 입구를 설정 3단계 안에만 두면 아무도 못 찾는다. 맨 위에 꺼내둔다.
+// 로그인 입구를 설정 3단계 안에만 두면 아무도 못 찾는다. 헤더에 꺼내둔다.
 function renderLoginBar() {
   const configured = cloud.isConfigured();
   const session = configured ? cloud.loadSession() : null;
   el('#btnLogin').hidden = !configured || Boolean(session);
-
-  if (!configured || session) { el('#loginBar').innerHTML = ''; return; }
-  el('#loginBar').innerHTML = `
-    <button class="status" data-goto-login>
-      <span class="dot" style="background:var(--tint)"></span>
-      <span>로그인하면 폰·컴퓨터에서 같은 데이터를 볼 수 있습니다</span>
-      <span class="chev">›</span>
-    </button>`;
+  ui.renderSyncChip(session, configured ? false : null);
 }
 
-function renderSortSeg() {
-  el('#sortSeg').innerHTML = Object.entries(ui.SORTS).map(([k, v]) =>
-    `<button data-sort="${k}" class="${k === state.sort ? 'on' : ''}">${v}</button>`).join('');
-}
 
-// 로그인/가입은 첫 화면과 설정 두 군데서 쓰므로 한 곳에 모아둔다
 async function doAuth(emailRaw, pw, signingUp) {
   const email = String(emailRaw || '').trim();
   if (!email || !pw) { toast('이메일과 비밀번호를 넣어주세요', 'err'); return false; }
@@ -128,7 +115,7 @@ async function save() {
 
 function showScreen(name) {
   state.screen = name;
-  els('.seg-item').forEach((t) => t.classList.toggle('on', t.dataset.screen === name));
+  els('.tabbar button').forEach((t) => t.classList.toggle('on', t.dataset.screen === name));
   els('.screen').forEach((s) => s.classList.toggle('on', s.id === `screen-${name}`));
   window.scrollTo({ top: 0 });
   if (name === 'settings') renderSettings();
@@ -757,6 +744,70 @@ function download(name, text, type = 'application/json') {
 }
 const stamp = () => new Date().toISOString().slice(0, 10);
 
+// 엑셀(.xlsx) 내려받기 - 보유종목 / 매매내역 / 비중 세 장
+function downloadExcel() {
+  const { pf, db } = state;
+  const cur = pf.baseCurrency;
+  const holdings = [
+    ['종목명', '티커', '국가', '섹터', '통화', '보유수량', '평균단가', '현재가',
+      `평가금액(${cur})`, `매입금액(${cur})`, `평가손익(${cur})`, '수익률(%)', '비중(%)'],
+    ...ui.sortPositions(pf.positions, 'amount').map((p) => [
+      p.asset.name, p.ticker, p.asset.country, p.asset.sector, p.asset.currency,
+      p.quantity, round(p.avgPriceLocal, 4), p.priceLocal ?? '',
+      round(p.marketValueBase), round(p.costBasisBase), round(p.unrealizedPlBase),
+      round(p.returnPct, 2), round(p.weight, 2),
+    ]),
+    [],
+    ['합계', '', '', '', '', '', '', '', round(pf.totalValue), round(pf.totalCost),
+      round(pf.unrealizedPl), round(pf.returnPct, 2), 100],
+  ];
+
+  const trades = [
+    ['일자', '종목명', '티커', '구분', '수량', '단가', '수수료', '계좌', '메모'],
+    ...[...db.transactions].sort((a, b) => (a.date < b.date ? -1 : 1)).map((t) => [
+      t.date, db.assets[t.ticker]?.name || t.ticker, t.ticker,
+      t.side === 'BUY' ? '매수' : '매도', t.quantity, t.price, t.fee || 0,
+      t.account || '', t.note || '',
+    ]),
+  ];
+
+  const alloc = [['구분', '항목', `평가금액(${cur})`, '현재비중(%)', '목표비중(%)', '판정']];
+  for (const [dim, label] of [['country', '국가'], ['sector', '섹터'], ['ticker', '종목']]) {
+    for (const b of pf.breakdowns[dim] || []) {
+      const item = db.targets?.[dim]?.items?.[b.key];
+      const t = item?.target;
+      let verdict = '목표없음';
+      if (item && t !== null && t !== undefined && t !== '') {
+        const { lo, hi, mode } = bandOf(item, db.targets[dim].tolerance);
+        const v = currentValue(b, mode);
+        verdict = (hi !== null && v > hi) ? '비중 많음'
+          : (lo !== null && v < lo) ? '비중 적음' : '적정';
+      }
+      alloc.push([label, b.key, round(b.marketValue), round(b.weight, 2),
+        (t ?? '') === '' ? '' : Number(t), verdict]);
+    }
+  }
+
+  const blob = buildXlsx([
+    { name: '보유종목', rows: holdings },
+    { name: '매매내역', rows: trades },
+    { name: '비중', rows: alloc },
+  ]);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `찬홍팍_주식_${stamp()}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  toast('엑셀 파일을 내려받았습니다');
+}
+
+function round(v, d = 0) {
+  if (v === null || v === undefined || !Number.isFinite(v)) return '';
+  const f = 10 ** d;
+  return Math.round(v * f) / f;
+}
+
 async function handleFile(file) {
   try {
     const text = await file.text();
@@ -779,8 +830,9 @@ function renderAccountList() {
 
 // ─────────────────────────────── 이벤트
 function wire() {
-  els('.seg-item').forEach((t) => t.addEventListener('click', () => showScreen(t.dataset.screen)));
+  els('.tabbar button').forEach((t) => t.addEventListener('click', () => showScreen(t.dataset.screen)));
   el('#btnAdd').addEventListener('click', () => showScreen('trades'));
+  el('#btnExcel').addEventListener('click', downloadExcel);
   el('#btnLogin').addEventListener('click', openLogin);
   el('#wcSignIn').addEventListener('click', () => doAuth(el('#wcEmail').value, el('#wcPw').value, false));
   el('#wcSignUp').addEventListener('click', () => doAuth(el('#wcEmail').value, el('#wcPw').value, true));
@@ -791,89 +843,58 @@ function wire() {
   el('#welcome').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') doAuth(el('#wcEmail').value, el('#wcPw').value, false);
   });
-  el('#loginBar').addEventListener('click', (e) => {
+  el('#btnAlerts').addEventListener('click', () => {
+    showScreen('home');
+    setTimeout(() => el('#topWarn').scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+  });
+  el('#syncChip').addEventListener('click', (e) => {
     if (e.target.closest('[data-goto-login]')) openLogin();
   });
-  el('#sortSeg').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-sort]');
-    if (!b) return;
-    state.sort = b.dataset.sort;
-    renderSortSeg();
-    ui.renderPositions(state.pf, state.sort);
-  });
-  el('#chartCard').addEventListener('click', (e) => {
-    const tab = e.target.closest('[data-chart-dim]');
-    if (tab) {
-      state.chartDim = tab.dataset.chartDim;
-      ui.renderWeightChart(state.pf, state.db, state.chartDim);
+
+  // 현황 화면은 카드가 통째로 다시 그려지므로 한 곳에서 위임 처리한다
+  el('#screen-home').addEventListener('click', (e) => {
+    const basis = e.target.closest('[data-basis]');
+    if (basis) {
+      state.basis = basis.dataset.basis;
+      ui.renderCountryCard(state.pf, state.db, state.basis);
+      ui.renderSectorCard(state.pf, state.db, state.basis);
       return;
     }
-    const lg = e.target.closest('[data-legend]');
-    if (lg && state.chartDim === 'ticker' && lg.dataset.legend !== '__other') {
-      showScreen('trades');
-      state.openStock = lg.dataset.legend;
-      ui.renderManage(state.pf, state.db, {
-        search: el('#txSearch').value, open: state.openStock,
-      });
+    const sort = e.target.closest('[data-sort]');
+    if (sort) {
+      state.sort = sort.dataset.sort;
+      ui.renderHoldingsCard(state.pf, state.sort);
+      return;
     }
-  });
-  el('#btnAddStock').addEventListener('click', () => openSheet());
-  els('[data-close]').forEach((b) => b.addEventListener('click', closeSheet));
-  els('[data-close-more]').forEach((b) => b.addEventListener('click', closeMore));
-  el('#btnSaveTx').addEventListener('click', submitTx);
-  el('#btnDeleteTx').addEventListener('click', deleteTx);
-  el('#txForm').addEventListener('input', updatePreview);
-  el('#txForm').addEventListener('submit', (e) => { e.preventDefault(); submitTx(); });
-  el('#pickedChip').addEventListener('click', () => openSheet(state.editingTxId));
-  el('#pickSearch').addEventListener('input', doSearch);
-  el('#btnUseQuote').addEventListener('click', () => {
-    const t = state.picked?.ticker;
-    const q = t && state.db.quotes[t];
-    if (!q || !Number.isFinite(q.price)) return toast('저장된 현재가가 없습니다', 'err');
-    el('#txForm').price.value = q.price;
-    updatePreview();
-    toast(`현재가 ${q.price.toLocaleString('ko-KR')} 적용`);
-  });
-
-  el('#pickResults').addEventListener('click', (e) => {
-    const pick = e.target.closest('[data-pick]');
-    if (pick) return choose(JSON.parse(pick.dataset.pick));
-    const raw = e.target.closest('[data-use-raw]');
-    if (raw) {
-      const ticker = raw.dataset.useRaw.toUpperCase();
-      const known = lookup(ticker);
-      return choose(known || { ticker, name: ticker, ...guessAsset(ticker) });
+    const tgt = e.target.closest('[data-goto-target]');
+    if (tgt) {
+      showScreen('settings');
+      const box = tgt.dataset.gotoTarget === 'country' ? '#setCountry' : '#setSector';
+      setTimeout(() => el(box).scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+      return;
     }
-    return null;
-  });
-
-  el('#listPositions').addEventListener('click', (e) => {
+    if (e.target.closest('[data-goto]')) { showScreen('trades'); return; }
+    if (e.target.closest('[data-goto-quotes]')) {
+      showScreen('settings');
+      setTimeout(() => el('#setQuotes').scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+      return;
+    }
     const row = e.target.closest('[data-ticker]');
-    if (row) editPrice(row.dataset.ticker);
-  });
-  el('#manageList').addEventListener('click', (e) => {
-    const trade = e.target.closest('[data-id]');
-    if (trade) return openSheet(trade.dataset.id);
-
-    const buy = e.target.closest('[data-buy]');
-    if (buy) return openSheetFor(buy.dataset.buy, 'BUY');
-    const sell = e.target.closest('[data-sell]');
-    if (sell) return openSheetFor(sell.dataset.sell, 'SELL');
-
-    const drop = e.target.closest('[data-drop]');
-    if (drop) return dropStock(drop.dataset.drop);
-
-    const pr = e.target.closest('[data-price]');
-    if (pr) return editPrice(pr.dataset.price);
-
-    const head = e.target.closest('[data-stock]');
-    if (head) {
-      state.openStock = state.openStock === head.dataset.stock ? null : head.dataset.stock;
-      ui.renderManage(state.pf, state.db, {
-        search: el('#txSearch').value, open: state.openStock,
-      });
+    if (row) { editPrice(row.dataset.ticker); return; }
+    if (e.target.closest('[data-expand]')) {
+      state.tipsExpanded = true;
+      ui.renderTopWarnings(state.pf, state.signals, { expanded: true });
+      return;
     }
-    return null;
+    const jump = e.target.closest('[data-jump]');
+    if (jump && jump.dataset.jump !== 'bypass') {
+      showScreen('trades');
+      state.openStock = jump.dataset.jump;
+      ui.renderManage(state.pf, state.db, { search: el('#txSearch').value, open: state.openStock });
+    } else if (jump) {
+      showScreen('settings');
+      setTimeout(() => openMore('bypass'), 80);
+    }
   });
   el('#txSearch').addEventListener('input', () => ui.renderManage(state.pf, state.db, {
     search: el('#txSearch').value, open: state.openStock,
@@ -895,12 +916,6 @@ function wire() {
     } else if (jump) {
       showScreen('settings');
       setTimeout(() => openMore('bypass'), 80);
-    }
-  });
-  el('#statusBar').addEventListener('click', (e) => {
-    if (e.target.closest('[data-goto-quotes]')) {
-      showScreen('settings');
-      setTimeout(() => el('#setQuotes').scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
     }
   });
 

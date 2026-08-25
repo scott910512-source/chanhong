@@ -43,51 +43,61 @@
 
 <header class="nav">
   <div class="nav-bar">
-    <h1>찬홍팍</h1>
+    <h1>내 주식 현황</h1>
     <div class="nav-actions">
-      <button id="btnLogin" class="btn-plain strong" hidden>로그인</button>
-      <button id="btnInstall" class="btn-plain" hidden>설치</button>
-      <button id="btnAdd" class="btn-add" aria-label="내 주식 관리">내 주식 관리</button>
+      <button id="btnInstall" class="icon-btn" hidden aria-label="앱 설치" title="앱 설치">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 20h16"/></svg>
+      </button>
+      <button id="btnLogin" class="icon-btn" hidden aria-label="로그인" title="로그인">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+      </button>
+      <button id="btnAlerts" class="icon-btn" aria-label="매매 안내">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>
+        </svg>
+        <span class="badge" id="alertCount" hidden>0</span>
+      </button>
+      <button id="btnAdd" class="btn-pill"><span class="long">내 주식 </span>관리</button>
     </div>
   </div>
-  <div class="seg">
-    <button class="seg-item on" data-screen="home">현황</button>
-    <button class="seg-item" data-screen="trades">관리</button>
-    <button class="seg-item" data-screen="settings">설정</button>
-  </div>
+  <div id="syncChip"></div>
 </header>
+
+<nav class="tabbar">
+  <button class="on" data-screen="home">
+    <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+    현황</button>
+  <button data-screen="trades">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 20V9"/></svg>
+    관리</button>
+  <button data-screen="settings">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/>
+      <path d="M20 12a8 8 0 0 0-.2-1.7l2-1.5-2-3.4-2.3 1a8 8 0 0 0-3-1.7L14 2h-4l-.5 2.7a8 8 0 0 0-3 1.7l-2.3-1-2 3.4 2 1.5a8 8 0 0 0 0 3.4l-2 1.5 2 3.4 2.3-1a8 8 0 0 0 3 1.7L10 22h4l.5-2.7a8 8 0 0 0 3-1.7l2.3 1 2-3.4-2-1.5c.1-.6.2-1.1.2-1.7z"/></svg>
+    설정</button>
+</nav>
 
 <main>
   <!-- ══════════ 현황 ══════════ -->
   <section id="screen-home" class="screen on">
-    <div id="summary" class="summary"></div>
-    <div id="loginBar"></div>
+    <div id="hero"></div>
     <div id="topWarn"></div>
 
-    <p class="group-title full">한눈에 보기</p>
-    <div id="chartCard"></div>
+    <div class="col-b">
+      <div id="cardCountry" class="card"></div>
+      <div id="cardSector" class="card"></div>
+    </div>
 
     <div class="col-a">
-      <p class="group-title">
-        내 종목 <span id="posCount" class="tail"></span>
-      </p>
-      <div class="sort-wrap">
-        <div class="mini-seg" id="sortSeg"></div>
-      </div>
-      <div id="listPositions" class="group"></div>
+      <div id="cardHoldings" class="card"></div>
       <div id="statusBar"></div>
-    </div>
-
-    <div class="col-b">
-      <p class="group-title c-country">국가별 비중</p>
-      <div id="listCountry" class="group"></div>
-
-      <p class="group-title c-sector">섹터별 비중</p>
-      <div id="listSector" class="group"></div>
-    </div>
-
-    <div class="group-foot">
-      <button id="btnRefresh" class="btn-plain wide">시세 새로고침</button>
+      <div class="group-foot">
+        <button id="btnRefresh" class="btn-plain wide">시세 새로고침</button>
+      </div>
     </div>
   </section>
 
@@ -129,6 +139,7 @@
       <button class="row tap" data-open="assets"><span>종목 정보</span><span class="chev">›</span></button>
       <button class="row tap" data-open="fx"><span>환율</span><span class="chev">›</span></button>
       <button class="row tap" data-open="data"><span>데이터 백업·복원</span><span class="chev">›</span></button>
+      <button class="row tap" id="btnExcel"><span>엑셀로 내려받기 (.xlsx)</span><span class="chev">›</span></button>
     </div>
 
     <p class="foot">데이터는 이 기기에만 저장됩니다. 서버로 보내지 않습니다.</p>
