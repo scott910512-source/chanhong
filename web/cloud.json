@@ -1,0 +1,12 @@
+{
+  "_설명": [
+    "계정 로그인으로 폰·컴퓨터에서 같은 데이터를 보려면 여기를 채우세요.",
+    "supabase.com 에서 무료 프로젝트를 하나 만들고,",
+    "Project Settings > API 의 Project URL 과 anon public 키를 넣으면 됩니다.",
+    "anon 키는 공개돼도 되는 값입니다. 실제 접근 제어는 RLS 가 합니다.",
+    "필요한 테이블 SQL 은 docs/cloud-setup.md 에 있습니다.",
+    "비워두면 앱은 이 기기에만 저장하는 방식으로 그냥 동작합니다."
+  ],
+  "url": "",
+  "anonKey": ""
+}

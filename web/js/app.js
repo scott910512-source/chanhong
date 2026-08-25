@@ -6,6 +6,7 @@ import { BypassRegistry, evaluate } from './rules.js';
 import { providerStatus, refreshQuotes, fromSiteFile } from './quotes.js';
 import { search as searchTickers, lookup } from './tickers.js';
 import * as sync from './sync.js';
+import * as cloud from './cloud.js';
 import * as ui from './ui.js';
 import { el, els, esc, num, parseNum, toast, today, price as fmtPrice } from './util.js';
 
@@ -398,59 +399,99 @@ function closeMore() {
 }
 
 function renderSync() {
+  // 계정 로그인이 준비돼 있으면 그걸 쓴다 (깃허브 계정이 없어도 되는 방식)
+  if (cloud.isConfigured()) {
+    const s = cloud.loadSession();
+    if (s) {
+      const last = store.sync?.lastSync
+        ? new Date(store.sync.lastSync).toLocaleString('ko-KR') : '아직 없음';
+      return `<div class="group" style="margin-top:14px">
+          <div class="row"><span>
+            <div class="main-txt" style="color:var(--green)">로그인됨</div>
+            <div class="sub-txt">${esc(s.email || '')} · 마지막 동기화 ${esc(last)}</div></span></div>
+          <button class="row tap" id="btnCloudSync"><span>지금 동기화</span><span class="chev">›</span></button>
+          <button class="row tap" id="btnCloudOut"><span style="color:var(--red)">로그아웃</span></button>
+        </div>
+        <p class="group-hint">다른 기기에서도 같은 이메일·비밀번호로 로그인하면
+          같은 데이터가 보입니다. 앱을 켤 때 자동으로 맞춰집니다.</p>`;
+    }
+    return `<p class="group-hint" style="padding-top:14px">
+        폰과 컴퓨터에서 같은 데이터를 보려면 로그인하세요.
+        처음이면 아래에 이메일·비밀번호를 넣고 <b>가입</b>을 누르면 됩니다.</p>
+      <div class="group">
+        <label class="row"><span>이메일</span>
+          <input id="cloudEmail" type="email" inputmode="email" autocomplete="username"
+                 placeholder="me@example.com"></label>
+        <label class="row"><span>비밀번호</span>
+          <input id="cloudPw" type="password" autocomplete="current-password"
+                 placeholder="6자 이상"></label>
+      </div>
+      <div class="group" style="margin-top:12px">
+        <button class="row tap" id="btnCloudIn"><span style="color:var(--tint)">로그인</span></button>
+        <button class="row tap" id="btnCloudUp"><span>처음이에요 · 가입하기</span></button>
+      </div>
+      <p class="group-hint">비밀번호는 이 앱을 만든 사람도 볼 수 없습니다.
+        로그인 안 해도 앱은 그냥 쓸 수 있고, 그때는 이 기기에만 저장됩니다.</p>`;
+  }
+
+  // 아직 백엔드를 안 붙였을 때
   const on = store.syncEnabled;
   const last = store.sync?.lastSync
     ? new Date(store.sync.lastSync).toLocaleString('ko-KR') : '아직 없음';
   return `<p class="group-hint" style="padding-top:14px">
-      폰과 컴퓨터에서 <b>같은 데이터</b>를 보려면 연결하세요.
-      깃허브의 비공개 Gist 한 칸에 데이터를 두고 양쪽이 읽고 씁니다.</p>
+      여러 기기에서 같은 데이터를 보려면 <b>계정 로그인</b>을 붙여야 합니다.
+      저장소의 <b>docs/cloud-setup.md</b> 를 따라 10분이면 됩니다.
+      (Supabase 무료 프로젝트 하나 만들고 web/cloud.json 채우기)</p>
+    <p class="group-title">임시: 내 깃허브로 동기화</p>
+    <p class="group-hint">깃허브 계정이 있는 <b>본인 기기끼리만</b> 쓰세요.
+      연결 코드에 내 토큰이 들어가므로 남에게 주면 안 됩니다.</p>
     ${on ? `
       <div class="group">
-        <div class="row"><span>
-          <div class="main-txt" style="color:var(--green)">연결됨</div>
+        <div class="row"><span><div class="main-txt" style="color:var(--green)">연결됨</div>
           <div class="sub-txt">마지막 동기화 ${esc(last)}</div></span></div>
         <button class="row tap" id="btnSyncNow"><span>지금 동기화</span><span class="chev">›</span></button>
-        <button class="row tap" id="btnShowCode"><span>다른 기기에 연결할 코드 복사</span><span class="chev">›</span></button>
+        <button class="row tap" id="btnShowCode"><span>연결 코드 복사</span><span class="chev">›</span></button>
         <button class="row tap" id="btnSyncOff"><span style="color:var(--red)">연결 끊기</span></button>
-      </div>
-      <p class="group-hint">다른 기기에서는 이 앱을 열고 <b>설정 &gt; 기기 동기화</b> 에
-        복사한 코드를 붙여넣으면 됩니다.</p>` : `
-      <p class="group-title">이미 연결한 기기가 있다면</p>
+      </div>` : `
       <div class="group">
         <label class="row stack">
           <input id="syncCode" placeholder="연결 코드 붙여넣기" style="text-align:left" autocomplete="off">
         </label>
         <button class="row tap" id="btnJoin"><span style="color:var(--tint)">이 코드로 연결</span></button>
-      </div>
-
-      <p class="group-title">처음이라면</p>
-      <div class="group">
         <label class="row stack">
-          <div class="sub-txt">깃허브 토큰 (gist 권한만 있으면 됩니다)</div>
+          <div class="sub-txt">또는 깃허브 토큰 (gist 권한)</div>
           <input id="syncToken" placeholder="ghp_..." style="text-align:left" autocomplete="off">
         </label>
         <button class="row tap" id="btnSyncStart"><span style="color:var(--tint)">이 기기 데이터로 시작</span></button>
-      </div>
-      <p class="group-hint">
-        토큰 만드는 곳: github.com → Settings → Developer settings →
-        Personal access tokens → <b>Tokens (classic)</b> → Generate new token →
-        <b>gist</b> 만 체크.<br><br>
-        토큰은 이 기기에만 저장되고 업로드되지 않습니다.
-        비공개 Gist 는 주소를 모르면 찾을 수 없지만 비밀번호가 걸린 건 아니니,
-        주소(연결 코드)를 남에게 주지 마세요.</p>`}`;
+      </div>`}`;
 }
 
 let pushTimer = null;
 
+// 원격 저장소는 둘 중 켜져 있는 걸 쓴다
+function remote() {
+  if (cloud.isConfigured() && cloud.loadSession()) return cloud;
+  if (store.syncEnabled) {
+    return {
+      pull: () => sync.pull(store.sync.token, store.sync.gistId),
+      push: (data) => sync.push(store.sync.token, store.sync.gistId, data),
+    };
+  }
+  return null;
+}
+
 async function syncPull({ quiet = false } = {}) {
-  if (!store.syncEnabled) return;
+  const r = remote();
+  if (!r) return;
   try {
-    const { data } = await sync.pull(store.sync.token, store.sync.gistId);
-    store.db = { ...sync.merge(store.db, data), apiKeys: store.db.apiKeys };
-    state.db = store.db;
-    await store.save({ snapshot: false });
+    const got = await r.pull();
+    if (got) {
+      store.db = { ...sync.merge(store.db, got.data), apiKeys: store.db.apiKeys };
+      state.db = store.db;
+      await store.save({ snapshot: false });
+      render();
+    }
     store.saveSyncConfig({ lastSync: new Date().toISOString() });
-    render();
     if (!quiet) toast('동기화 완료');
   } catch (e) {
     if (!quiet) toast(`동기화 실패: ${e.message}`, 'err');
@@ -459,11 +500,12 @@ async function syncPull({ quiet = false } = {}) {
 }
 
 function syncPushSoon() {
-  if (!store.syncEnabled) return;
+  const r = remote();
+  if (!r) return;
   clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
     try {
-      await sync.push(store.sync.token, store.sync.gistId, store.payload());
+      await r.push(store.payload());
       store.saveSyncConfig({ lastSync: new Date().toISOString() });
       state.syncError = null;
     } catch (e) {
@@ -696,6 +738,38 @@ function wire() {
   el('#moreBody').addEventListener('click', async (e) => {
     const t = e.target;
 
+    if (t.closest('#btnCloudIn') || t.closest('#btnCloudUp')) {
+      const email = el('#cloudEmail').value.trim();
+      const pw = el('#cloudPw').value;
+      if (!email || !pw) return toast('이메일과 비밀번호를 넣어주세요', 'err');
+      const signingUp = Boolean(t.closest('#btnCloudUp'));
+      try {
+        toast(signingUp ? '가입하는 중...' : '로그인하는 중...');
+        if (signingUp) {
+          const r = await cloud.signUp(email, pw);
+          if (r.needsConfirm) return toast('메일함에서 인증 링크를 눌러주세요');
+        } else {
+          await cloud.signIn(email, pw);
+        }
+        await syncPull({ quiet: true });
+        await cloud.push(store.payload()).catch(() => {});
+        el('#moreBody').innerHTML = renderSync();
+        toast(signingUp ? '가입하고 연결됐습니다' : '로그인됐습니다');
+      } catch (err) { toast(err.message, 'err'); }
+      return;
+    }
+    if (t.closest('#btnCloudSync')) {
+      await syncPull();
+      await cloud.push(store.payload()).catch((err) => toast(`업로드 실패: ${err.message}`, 'err'));
+      el('#moreBody').innerHTML = renderSync();
+      return;
+    }
+    if (t.closest('#btnCloudOut')) {
+      if (!confirm('로그아웃합니다. 이 기기의 데이터는 그대로 남습니다.')) return;
+      cloud.clearSession();
+      el('#moreBody').innerHTML = renderSync();
+      return;
+    }
     if (t.closest('#btnSyncStart')) {
       const token = el('#syncToken').value.trim();
       if (!token) return toast('토큰을 넣어주세요', 'err');
@@ -835,7 +909,7 @@ async function main() {
   render();
   if (store.isFirstRun) toast('예시 데이터로 시작합니다');
   loadSiteQuotes();
-  if (store.syncEnabled) syncPull({ quiet: true });
+  cloud.loadConfig().then(() => { if (remote()) syncPull({ quiet: true }); });
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
