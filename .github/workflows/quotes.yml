@@ -13,7 +13,7 @@ on:
     - cron: '0,30 14-21 * * 1-5'
   workflow_dispatch:
   push:
-    paths: ['web/watchlist.json', 'tools/fetch_quotes.py']
+    paths: ['web/watchlist.json', 'tools/fetch_quotes.py', '.github/workflows/quotes.yml']
 
 permissions:
   contents: write
