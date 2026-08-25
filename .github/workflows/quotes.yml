@@ -38,10 +38,18 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- web/quotes.json; then
+          # quotes.json 이 아직 추적되지 않는 새 파일일 수 있어서 먼저 스테이지에 올린다.
+          # (git diff 는 untracked 파일을 변경으로 보지 않아 첫 실행이 그냥 넘어간다)
+          git add web/quotes.json
+          if git diff --cached --quiet -- web/quotes.json; then
             echo "시세 변동 없음 - 커밋 생략"
-          else
-            git add web/quotes.json
-            git commit -m "시세 자동수집 $(date -u +'%Y-%m-%d %H:%M UTC')"
-            git push
+            exit 0
           fi
+          git commit -m "시세 자동수집 $(date -u +'%Y-%m-%d %H:%M UTC')"
+          # 다른 워크플로가 먼저 push 했을 수 있으니 몇 번 재시도한다
+          for i in 1 2 3; do
+            if git push; then exit 0; fi
+            echo "push 실패 - 원격을 당겨서 재시도 ($i)"
+            git pull --rebase origin "${GITHUB_REF_NAME}" || exit 1
+          done
+          exit 1
