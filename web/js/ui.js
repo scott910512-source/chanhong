@@ -285,18 +285,46 @@ export function renderStatus(pf, db) {
 }
 
 // ─────────────────────────────── 매매 안내
-const MAX_TIPS = 4;
-
-export function renderTopWarnings(pf, signals, { expanded = false } = {}) {
+// ─────────────────────────────── 상단 안내
+// 기본은 한 줄. 눌러야 펴지고, ✕ 로 닫을 수 있다.
+// 닫아도 헤더 종 아이콘의 숫자는 남으므로 언제든 다시 부를 수 있다.
+// 반환값은 안내 내용의 지문. app.js 가 '닫아둔 뒤 내용이 바뀌었는지' 볼 때 쓴다.
+// 금액은 시세 따라 계속 흔들리므로 종목·매매방향만 넣는다.
+export function renderTopWarnings(pf, signals, { expanded = false, hidden = false } = {}) {
   const plan = consolidate(signals, pf);
   const bypassed = signals.filter((s) => s.status === 'BYPASSED');
   const badge = el('#alertCount');
   badge.hidden = !plan.length;
   badge.textContent = String(plan.length);
 
-  if (!plan.length && !bypassed.length) { el('#topWarn').innerHTML = ''; return; }
-  const shown = expanded ? plan : plan.slice(0, MAX_TIPS);
-  const rows = shown.map((i) => {
+  const box = el('#topWarn');
+  const sig = `${plan.map((i) => `${i.ticker}:${i.action}`).join('|')}#${bypassed.length}`;
+  if (!plan.length && !bypassed.length) { box.innerHTML = ''; return ''; }
+  if (hidden) { box.innerHTML = ''; return sig; }
+
+  const closeBtn = '<button class="tip-x" data-tips-close aria-label="안내 닫기">✕</button>';
+
+  // ── 접힌 상태: 한 줄
+  if (!expanded) {
+    const total = plan.length + (bypassed.length ? 1 : 0);
+    const top = plan[0];
+    const sell = top?.action === 'SELL';
+    const head = top
+      ? `<b>${esc(top.label)}</b> ${ACTION[top.action]} ${num(top.amountBase)}`
+      : `예외 처리 <b>${bypassed.length}건</b>`;
+    const rest = total > 1 ? ` <span class="tip-rest">외 ${total - 1}건</span>` : '';
+    box.innerHTML = `<div class="tips">
+      <div class="tip sum ${top ? (sell ? 'sell' : 'buy') : 'mute'}">
+        <span class="mk">${top ? (sell ? '−' : '+') : '×'}</span>
+        <button class="tx" data-expand>${head}${rest}</button>
+        <span class="chev">›</span>
+        ${closeBtn}
+      </div></div>`;
+    return sig;
+  }
+
+  // ── 펼친 상태: 전부 보여주고 다시 접을 수 있게
+  const rows = plan.map((i) => {
     const sell = i.action === 'SELL';
     const why = i.reasons[0] ? i.reasons[0].split(' (')[0] : '';
     const more = i.reasons.length > 1 ? ` 외 ${i.reasons.length - 1}` : '';
@@ -306,15 +334,17 @@ export function renderTopWarnings(pf, signals, { expanded = false } = {}) {
         ${num(i.amountBase)}${i.shares ? ` · ${num(i.shares, 1)}주` : ''}</span>
       <span class="amt">${esc(why + more)}</span></button>`;
   }).join('');
-  const rest = plan.length - shown.length;
-  const moreRow = rest > 0
-    ? `<button class="tip mute" data-expand><span class="mk">+</span>
-        <span class="tx">${rest}건 더 보기</span></button>` : '';
   const byRow = bypassed.length
     ? `<button class="tip mute" data-jump="bypass"><span class="mk">×</span>
         <span class="tx">예외 처리 ${bypassed.length}건</span>
         <span class="amt">${esc(bypassed.slice(0, 2).map((s) => s.label).join(', '))}</span></button>` : '';
-  el('#topWarn').innerHTML = `<div class="tips">${rows}${moreRow}${byRow}</div>`;
+  box.innerHTML = `<div class="tips">${rows}${byRow}
+    <div class="tip sum mute">
+      <span class="mk">⌃</span>
+      <button class="tx" data-collapse>한 줄로 접기</button>
+      ${closeBtn}
+    </div></div>`;
+  return sig;
 }
 
 // ─────────────────────────────── 관리 화면

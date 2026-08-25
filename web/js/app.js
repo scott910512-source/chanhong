@@ -16,6 +16,7 @@ const state = {
   db: null, pf: null, signals: [], bypassReg: null,
   screen: 'home', editingTxId: null, picked: null,
   sort: 'amount', basis: 'amount',
+  tipsExpanded: false, tipsHidden: false, tipsHiddenSig: null,
   installPrompt: null, fetchLog: [],
 };
 
@@ -33,7 +34,7 @@ function render() {
   const { pf, db } = state;
   renderLoginBar();
   ui.renderHero(pf);
-  ui.renderTopWarnings(pf, state.signals, { expanded: state.tipsExpanded });
+  renderWarnings();
   ui.renderCountryCard(pf, db, state.basis);
   ui.renderSectorCard(pf, db, state.basis);
   ui.renderHoldingsCard(pf, state.sort);
@@ -41,6 +42,18 @@ function render() {
   ui.renderManage(pf, db, { search: el('#txSearch').value, open: state.openStock });
   renderAccountList();
   if (state.screen === 'settings') renderSettings();
+}
+
+// 상단 안내. 닫아둔 뒤 안내 내용이 달라지면 알아서 다시 띄운다.
+function renderWarnings() {
+  const sig = ui.renderTopWarnings(state.pf, state.signals, {
+    expanded: state.tipsExpanded, hidden: state.tipsHidden,
+  });
+  if (state.tipsHidden && sig !== state.tipsHiddenSig) {
+    state.tipsHidden = false;
+    state.tipsHiddenSig = null;
+    ui.renderTopWarnings(state.pf, state.signals, { expanded: state.tipsExpanded });
+  }
 }
 
 // 로그인 입구를 설정 3단계 안에만 두면 아무도 못 찾는다. 헤더에 꺼내둔다.
@@ -119,9 +132,10 @@ function addTargetKey(dim, message, preset) {
   toast(`${key} 추가 - 목표 %를 넣어주세요`);
 }
 
+// 계정·기기 동기화는 어느 화면에서든 그 자리에서 바로 연다.
+// 설정 화면까지 끌고 갔다가 닫으면 엉뚱한 데 남아 있어서 불편했다.
 function openLogin() {
-  showScreen('settings');
-  setTimeout(() => openMore('sync'), 80);
+  openMore('sync');
 }
 
 async function save() {
@@ -871,6 +885,10 @@ function wire() {
   });
   el('#btnAlerts').addEventListener('click', () => {
     showScreen('home');
+    state.tipsHidden = false;
+    state.tipsHiddenSig = null;
+    state.tipsExpanded = true;
+    renderWarnings();
     setTimeout(() => el('#topWarn').scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
   });
   el('#syncChip').addEventListener('click', (e) => {
@@ -962,9 +980,21 @@ function wire() {
     }
     const row = e.target.closest('[data-ticker]');
     if (row) { editPrice(row.dataset.ticker); return; }
+    if (e.target.closest('[data-tips-close]')) {
+      state.tipsHidden = true;
+      state.tipsExpanded = false;
+      // 닫을 당시의 안내 내용을 기억해뒀다가, 나중에 달라지면 다시 띄운다
+      state.tipsHiddenSig = ui.renderTopWarnings(state.pf, state.signals, { hidden: true });
+      return;
+    }
     if (e.target.closest('[data-expand]')) {
       state.tipsExpanded = true;
-      ui.renderTopWarnings(state.pf, state.signals, { expanded: true });
+      renderWarnings();
+      return;
+    }
+    if (e.target.closest('[data-collapse]')) {
+      state.tipsExpanded = false;
+      renderWarnings();
       return;
     }
     const jump = e.target.closest('[data-jump]');
@@ -973,32 +1003,13 @@ function wire() {
       state.openStock = jump.dataset.jump;
       ui.renderManage(state.pf, state.db, { search: el('#txSearch').value, open: state.openStock });
     } else if (jump) {
-      showScreen('settings');
-      setTimeout(() => openMore('bypass'), 80);
+      openMore('bypass');
     }
   });
   el('#txSearch').addEventListener('input', () => ui.renderManage(state.pf, state.db, {
     search: el('#txSearch').value, open: state.openStock,
   }));
   el('#btnRefresh').addEventListener('click', (e) => doRefresh(e.currentTarget));
-  el('#topWarn').addEventListener('click', (e) => {
-    if (e.target.closest('[data-expand]')) {
-      state.tipsExpanded = true;
-      ui.renderTopWarnings(state.pf, state.signals, { expanded: true });
-      return;
-    }
-    const jump = e.target.closest('[data-jump]');
-    if (jump && jump.dataset.jump !== 'bypass') {
-      showScreen('trades');
-      state.openStock = jump.dataset.jump;
-      ui.renderManage(state.pf, state.db, {
-        search: el('#txSearch').value, open: state.openStock,
-      });
-    } else if (jump) {
-      showScreen('settings');
-      setTimeout(() => openMore('bypass'), 80);
-    }
-  });
 
   // 설정: 값이 바뀌면 저장
   el('#screen-settings').addEventListener('change', (e) => {

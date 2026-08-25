@@ -216,6 +216,14 @@ main{max-width:1240px;margin:0 auto}
 .tip.mute .mk{background:var(--label3)}
 .tip .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tip .amt{flex:none;color:var(--label2);font-size:11.5px}
+/* 한 줄 요약 행: 본문은 눌러서 펴고, 오른쪽 ✕ 로 닫는다 */
+.tip.sum{cursor:default}
+.tip.sum .tx{text-align:left;font:inherit;color:inherit;padding:0}
+.tip .tip-rest{color:var(--label2)}
+.tip .chev{flex:none;color:var(--label3);font-size:15px}
+.tip-x{flex:none;width:26px;height:26px;margin:-4px -6px -4px 2px;border-radius:50%;
+  color:var(--label3);font-size:13px;line-height:1;display:grid;place-items:center}
+.tip-x:active{background:var(--fill);color:var(--label)}
 
 /* ── 리스트(설정/관리 공용) ── */
 .group-title{font-size:12.5px;font-weight:700;color:var(--label2);padding:20px 20px 8px;
