@@ -13,22 +13,13 @@
 
 ## 2. 테이블과 권한 만들기
 
-프로젝트 화면 왼쪽 **SQL Editor** → 아래를 통째로 붙여넣고 **Run**.
+프로젝트 화면 왼쪽 **SQL Editor** → **`sql/supabase-setup.sql`** 파일 내용을
+통째로 붙여넣고 **Run**. (한 번만 하면 되고, 여러 번 실행해도 안전합니다)
 
-```sql
-create table if not exists public.portfolios (
-  user_id    uuid primary key references auth.users(id) on delete cascade,
-  data       jsonb not null default '{}'::jsonb,
-  updated_at timestamptz not null default now()
-);
-
-alter table public.portfolios enable row level security;
-
--- 로그인한 사람은 '자기 행'만 읽고 쓸 수 있다
-create policy "read own"   on public.portfolios for select using (auth.uid() = user_id);
-create policy "insert own" on public.portfolios for insert with check (auth.uid() = user_id);
-create policy "update own" on public.portfolios for update using (auth.uid() = user_id);
-```
+무슨 일을 하는지 요약하면:
+- `portfolios` 테이블 생성 (사용자 한 명당 한 줄, 앱 데이터 전체가 `data` 한 칸에)
+- 행 단위 보안(RLS) 켜기
+- "로그인한 사람은 자기 행만 읽고 쓴다" 정책 3개 추가
 
 ## 3. 이메일 인증 끄기 (선택, 권장)
 
