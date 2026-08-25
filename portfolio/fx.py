@@ -115,7 +115,7 @@ class FxRates:
     def _stooq_pair(self, cur: str) -> float:
         rows = fetch_csv(
             "https://stooq.com/q/l/",
-            params={"s": f"{cur}{self.base}".lower(), "f": "sd2t2ohlcv", "h": "", "e": "csv"},
+            params={"s": f"{cur}{self.base}".lower(), "f": "sd2t2ohlcv", "e": "csv"},
             timeout=self.timeout,
         )
         close = rows[0].get("Close") if rows else None

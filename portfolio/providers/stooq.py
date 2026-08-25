@@ -33,7 +33,7 @@ class StooqProvider(Provider):
     def raw_price(self, sym: str) -> float:
         rows = fetch_csv(
             "https://stooq.com/q/l/",
-            params={"s": sym, "f": "sd2t2ohlcv", "h": "", "e": "csv"},
+            params={"s": sym, "f": "sd2t2ohlcv", "e": "csv"},
             timeout=self.timeout,
         )
         if not rows:

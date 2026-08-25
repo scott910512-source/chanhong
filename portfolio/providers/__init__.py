@@ -9,7 +9,7 @@ from .keyed import (
     MarketstackProvider,
     TwelveDataProvider,
 )
-from .naver import NaverProvider
+from .naver import NaverGlobalProvider, NaverProvider
 from .stooq import StooqProvider
 from .vietnam import VietnamProvider
 from .yahoo import YahooProvider
@@ -19,6 +19,7 @@ ALL_PROVIDERS: dict[str, type[Provider]] = {
     for p in (
         YahooProvider,
         NaverProvider,
+        NaverGlobalProvider,
         VietnamProvider,
         StooqProvider,
         FinnhubProvider,
@@ -31,6 +32,7 @@ ALL_PROVIDERS: dict[str, type[Provider]] = {
 DEFAULT_ORDER = [
     "yahoo",
     "naver",
+    "naver_global",
     "vietnam",
     "stooq",
     "finnhub",

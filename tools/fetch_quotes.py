@@ -62,7 +62,8 @@ def main() -> int:
 
     # 액션은 매번 새로 받아야 하므로 캐시를 쓰지 않는다
     svc = QuoteService(ROOT / "data" / "cache" / "actions-quotes.json",
-                       order=["yahoo", "naver", "vietnam", "stooq"],
+                       # 야후는 클라우드 IP 를 429 로 막는 일이 잦아서 네이버를 뒤에 받쳐둔다
+                       order=["yahoo", "naver", "naver_global", "vietnam", "stooq"],
                        timeout=15, cache_ttl=0)
     book = svc.fetch(assets, base, refresh=True)
     for line in book.log:
