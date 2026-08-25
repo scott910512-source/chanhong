@@ -51,6 +51,11 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   background:var(--card);box-shadow:var(--sh);position:relative;color:var(--label2);
 }
 .icon-btn:active{background:var(--fill)}
+.icon-btn.signed{color:var(--brand)}
+.icon-btn.signed::after{
+  content:'';position:absolute;right:1px;bottom:1px;width:9px;height:9px;border-radius:50%;
+  background:var(--ok);border:2px solid var(--card);
+}
 .icon-btn .badge{
   position:absolute;top:-1px;right:-1px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;
   background:var(--bad);color:#fff;font-size:10px;font-weight:700;

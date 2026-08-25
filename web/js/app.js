@@ -45,9 +45,13 @@ function render() {
 
 // 로그인 입구를 설정 3단계 안에만 두면 아무도 못 찾는다. 헤더에 꺼내둔다.
 function renderLoginBar() {
-  const configured = cloud.isConfigured();
-  const session = configured ? cloud.loadSession() : null;
-  el('#btnLogin').hidden = !configured || Boolean(session);
+  const session = cloud.loadSession();
+  const configured = cloud.isConfigured() || Boolean(session);
+  // 계정 아이콘은 항상 보인다. 로그인/로그아웃 둘 다 여기로 들어간다.
+  const btn = el('#btnLogin');
+  btn.hidden = false;
+  btn.classList.toggle('signed', Boolean(session));
+  btn.title = session ? `${session.email || '계정'} · 눌러서 로그아웃` : '로그인';
   ui.renderSyncChip(session, configured ? false : null);
 }
 
@@ -505,9 +509,11 @@ function closeMore() {
 }
 
 function renderSync() {
-  // 계정 로그인이 준비돼 있으면 그걸 쓴다 (깃허브 계정이 없어도 되는 방식)
-  if (cloud.isConfigured()) {
-    const s = cloud.loadSession();
+  // 로그인 세션이 있으면 cloud.json 을 못 읽은 상황에서도 반드시 이 화면을 보여준다.
+  // (안 그러면 로그아웃할 방법이 없어진다)
+  const session = cloud.loadSession();
+  if (cloud.isConfigured() || session) {
+    const s = session;
     if (s) {
       const last = store.sync?.lastSync
         ? new Date(store.sync.lastSync).toLocaleString('ko-KR') : '아직 없음';

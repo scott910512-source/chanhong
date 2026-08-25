@@ -11,20 +11,40 @@
 
 const CONFIG_URL = './cloud.json';
 const TOKEN_KEY = 'chanhong.cloud.session';
+// 한 번 읽은 설정은 기기에 남겨둔다. 네트워크가 잠깐 안 되거나 캐시가 꼬여서
+// cloud.json 을 못 읽으면 "백엔드가 없는 앱" 으로 되돌아가 로그아웃 버튼까지
+// 사라지는 사고가 난다.
+const CONFIG_CACHE = 'chanhong.cloud.config';
 const TABLE = 'portfolios';
 
 let config = null;
 
+function cachedConfig() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CONFIG_CACHE) || 'null');
+    return (raw?.url && raw?.anonKey) ? raw : null;
+  } catch { return null; }
+}
+
 export async function loadConfig() {
   if (config !== null) return config;
+  // 먼저 기기에 남아 있는 설정으로 즉시 동작 가능하게 해둔다
+  config = cachedConfig() || null;
   try {
     const res = await fetch(`${CONFIG_URL}?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error('없음');
     const d = await res.json();
     const url = normalizeUrl(d.url);
-    config = (url && d.anonKey) ? { ...d, url } : false;
+    if (url && d.anonKey) {
+      config = { ...d, url };
+      try { localStorage.setItem(CONFIG_CACHE, JSON.stringify(config)); } catch { /* 무시 */ }
+    } else {
+      config = false;
+      try { localStorage.removeItem(CONFIG_CACHE); } catch { /* 무시 */ }
+    }
   } catch {
-    config = false;
+    // 못 읽었으면 캐시본을 그대로 쓴다. 그것도 없을 때만 미설정으로 본다.
+    if (!config) config = false;
   }
   return config;
 }
