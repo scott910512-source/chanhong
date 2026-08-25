@@ -30,6 +30,10 @@ function recompute() {
 }
 
 function render() {
+  // 스토어가 db 객체를 통째로 갈아끼우는 길이 여럿 있다 (되돌리기 / 예시 데이터 /
+  // 전체 삭제 / 백업 불러오기). 그때마다 부르는 쪽에서 state.db 를 다시 이어주는 걸
+  // 잊으면 화면은 죽은 옛 객체를 그린다. 그리기 직전에 한 번 맞춰두면 그 부류가 없어진다.
+  state.db = store.db;
   recompute();
   const { pf, db } = state;
   renderLoginBar();
@@ -254,15 +258,17 @@ function updatePreview() {
 function submitTx() {
   if (!state.picked) return toast('종목을 먼저 고르세요', 'err');
   const f = el('#txForm');
-  const qty = Math.abs(parseNum(f.quantity.value));
+  // 음수를 Math.abs 로 조용히 뒤집으면 -5 를 넣은 사람은 5주가 들어간 걸 모른다.
+  // 매수/매도는 바로 위 선택으로 정하는 것이니 여기서는 되묻는 게 맞다.
+  const qty = parseNum(f.quantity.value);
   const p = parseNum(f.price.value);
-  if (!qty) return toast('수량을 입력하세요', 'err');
-  if (!p) return toast('단가를 입력하세요', 'err');
+  if (!qty || qty < 0) return toast('수량은 0보다 큰 수로 넣어주세요', 'err');
+  if (!p || p < 0) return toast('단가는 0보다 큰 수로 넣어주세요', 'err');
 
   const ticker = state.picked.ticker;
   const row = {
     date: f.date.value || today(), ticker, side: f.side.value, quantity: qty, price: p,
-    fee: parseNum(f.fee.value), account: f.account.value.trim() || '기본',
+    fee: Math.max(0, parseNum(f.fee.value)), account: f.account.value.trim() || '기본',
     note: f.note.value.trim(),
   };
 

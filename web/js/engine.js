@@ -112,14 +112,19 @@ export function buildPortfolio(db) {
       ? ((q.price - q.previousClose) / q.previousClose) * 100 : null;
     p.dayPlBase = (p.hasPrice && Number.isFinite(q?.previousClose))
       ? (q.price - q.previousClose) * p.quantity * p.fx : null;
+    // 시세를 아직 못 받은 종목은 산 값으로 친다. 0 원으로 두면 방금 넣은 종목이
+    // 총 자산에서 통째로 사라지고 비중·경고도 전부 안 나온다.
+    // 평가손익과 수익률은 알 수 없으니 그대로 비워두고, 아래 상태줄이 따로 알린다.
+    p.valuedAtCost = !p.hasPrice;
+    p.valueBase = p.hasPrice ? p.marketValueBase : p.costBasisBase;
   }
 
   const pricedValue = held.reduce((s, p) => s + (p.marketValueBase || 0), 0);
-  const totalValue = pricedValue + cash;
+  const totalValue = held.reduce((s, p) => s + (p.valueBase || 0), 0) + cash;
   for (const p of held) {
-    p.weight = totalValue && p.marketValueBase ? (p.marketValueBase / totalValue) * 100 : 0;
+    p.weight = totalValue && p.valueBase ? (p.valueBase / totalValue) * 100 : 0;
   }
-  held.sort((a, b) => (b.marketValueBase || 0) - (a.marketValueBase || 0));
+  held.sort((a, b) => (b.valueBase || 0) - (a.valueBase || 0));
 
   const totalCost = held.reduce((s, p) => s + (p.hasPrice ? p.costBasisBase : 0), 0);
   const unrealizedPl = held.reduce((s, p) => s + (p.unrealizedPlBase || 0), 0);
@@ -156,7 +161,7 @@ export function buildBreakdowns(pf, db) {
   for (const dim of DIMENSIONS) {
     const buckets = new Map();
     for (const p of pf.positions) {
-      if (!p.hasPrice) continue;
+      if (!p.valueBase) continue;
       const keys = KEYFN[dim](p);
       const share = 1 / keys.length; // 태그/계좌가 여러 개면 균등 분할
       for (const key of keys) {
@@ -174,7 +179,7 @@ export function buildBreakdowns(pf, db) {
           };
           buckets.set(key, b);
         }
-        b.marketValue += p.marketValueBase * share;
+        b.marketValue += p.valueBase * share;
         b.costBasis += p.costBasisBase * share;
         b.dayPl += (p.dayPlBase || 0) * share;
         b.quantity += p.quantity * share;

@@ -42,12 +42,17 @@ class Portfolio:
     cash: float = 0.0
     realized_pl: float = 0.0
     priced_value: float = 0.0  # 시세를 받은 종목의 평가금액 합
+    valued_sum: float = 0.0  # 시세 없는 종목은 산 값으로 친 총합
     missing_prices: list[str] = field(default_factory=list)
 
     @property
     def total_value(self) -> float:
-        """현금 포함 총 자산 (비중 계산 기준)."""
-        return self.priced_value + self.cash
+        """현금 포함 총 자산 (비중 계산 기준).
+
+        시세를 아직 못 받은 종목은 산 값으로 친다. 0 으로 두면 방금 넣은 종목이
+        총 자산에서 사라지고 비중·경고가 전부 안 나온다.
+        """
+        return self.valued_sum + self.cash
 
     @property
     def total_cost(self) -> float:
@@ -144,20 +149,27 @@ def build_portfolio(txs: list[Transaction], settings: Settings, book: QuoteBook,
     realized_total = sum(p.realized_pl_local * p.fx_rate for p in all_positions)
 
     priced = sum(p.market_value_base or 0.0 for p in positions)
-    total = priced + cash
     for pos in positions:
-        mv = pos.market_value_base
-        pos.weight = (mv / total * 100.0) if (total and mv) else 0.0
+        pos.valued_at_cost = pos.market_value_base is None
+        pos.value_base = (
+            pos.cost_basis_base if pos.valued_at_cost else pos.market_value_base
+        )
+    valued = sum(p.value_base or 0.0 for p in positions)
+    total = valued + cash
+    for pos in positions:
+        v = pos.value_base
+        pos.weight = (v / total * 100.0) if (total and v) else 0.0
 
     missing = [p.asset.ticker for p in positions if p.quote is None or not p.fx_rate]
 
     pf = Portfolio(
         base_currency=settings.base_currency,
-        positions=sorted(positions, key=lambda p: p.market_value_base or 0, reverse=True),
+        positions=sorted(positions, key=lambda p: p.value_base or 0, reverse=True),
         breakdowns={},
         cash=cash,
         realized_pl=realized_total,
         priced_value=priced,
+        valued_sum=valued,
         missing_prices=missing,
     )
     pf.breakdowns = build_breakdowns(pf)
@@ -180,8 +192,8 @@ def build_breakdowns(pf: Portfolio) -> dict[str, list[Bucket]]:
     for dim, keyfn in DIMENSION_KEYS.items():
         buckets: dict[str, Bucket] = {}
         for p in pf.positions:
-            mv = p.market_value_base
-            if mv is None:
+            mv = p.value_base
+            if not mv:
                 continue
             keys = keyfn(p)
             share = 1.0 / len(keys)  # 태그/계좌가 여러 개면 균등 분할
@@ -206,7 +218,7 @@ def build_breakdowns(pf: Portfolio) -> dict[str, list[Bucket]]:
 
 
 COUNTRY_NAMES = {
-    "KR": "대한민국", "US": "미국", "VN": "베트남", "JP": "일본",
+    "KR": "한국", "US": "미국", "VN": "베트남", "JP": "일본",
     "CN": "중국", "HK": "홍콩", "TW": "대만", "DE": "독일", "GB": "영국",
 }
 

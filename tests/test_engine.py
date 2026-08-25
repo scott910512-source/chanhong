@@ -101,11 +101,20 @@ class TestPortfolio(unittest.TestCase):
         self.assertEqual(by_country["KR"].market_value, 800_000)
         self.assertAlmostEqual(by_country["KR"].weight, 800_000 / 2_750_000 * 100)
 
-    def test_missing_price_is_reported_not_crashed(self):
+    def test_missing_price_is_valued_at_cost(self):
+        # 0 원으로 빼버리면 방금 넣은 종목이 총 자산에서 사라지고
+        # 국가·섹터 비중도 안 나와서 경고가 통째로 죽는다.
         book = make_book({"AAPL": (150.0, 140.0, "USD")}, {"USD": 1300.0})
         pf = build_portfolio(self.txs, self.settings, book)
         self.assertIn("005930.KS", pf.missing_prices)
-        self.assertEqual(pf.total_value, 1_950_000)  # 시세 없는 종목은 평가에서 제외
+        kr = next(p for p in pf.positions if p.asset.ticker == "005930.KS")
+        self.assertTrue(kr.valued_at_cost)
+        self.assertIsNone(kr.market_value_base)  # 현재 가치는 모르는 채로 둔다
+        self.assertEqual(kr.value_base, 700_000)  # 10주 x 70,000 매입가
+        self.assertEqual(pf.total_value, 1_950_000 + 700_000)
+        self.assertEqual(pf.priced_value, 1_950_000)  # 시세 받은 몫은 따로 남는다
+        by_country = {b.key: b for b in pf.breakdown("country")}
+        self.assertEqual(by_country["KR"].market_value, 700_000)
 
     def test_day_pl(self):
         pf = build_portfolio(self.txs, self.settings, self.book)

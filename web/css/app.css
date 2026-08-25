@@ -28,6 +28,9 @@
    두 손가락 핀치 확대와 스크롤은 그대로 살아 있다. */
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;
   touch-action:manipulation}
+/* display 를 지정한 규칙이 hidden 속성을 이겨버린다.
+   (알림 배지가 0건일 때도 빨갛게 떠 있던 원인) */
+[hidden]{display:none !important}
 html{-webkit-text-size-adjust:100%}
 body{
   margin:0;background:var(--bg);color:var(--label);
@@ -217,6 +220,8 @@ main{max-width:1240px;margin:0 auto}
 .tip .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tip .amt{flex:none;color:var(--label2);font-size:11.5px}
 /* 한 줄 요약 행: 본문은 눌러서 펴고, 오른쪽 ✕ 로 닫는다 */
+/* 시세를 못 받아 매입가로 친 줄임을 표시 */
+.hold-r .num .atcost{display:block;font-size:10px;color:var(--label3);font-weight:400}
 .tip.sum{cursor:default}
 .tip.sum .tx{text-align:left;font:inherit;color:inherit;padding:0}
 .tip .tip-rest{color:var(--label2)}

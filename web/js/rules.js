@@ -5,17 +5,14 @@
 //   amount : 투자금액     (허용오차는 목표금액의 %)
 //   shares : 주 수량      (허용오차는 목표주수의 %, 종목 축에서만 의미 있음)
 
-import { DIM_LABELS, MODE_LABELS } from './util.js';
+import { COUNTRY_NAMES, DIM_LABELS, MODE_LABELS } from './util.js';
 
 export const STATUS = { ACTIVE: '실행', BYPASSED: '예외', MUTED: '참고', OK: '적정' };
 
 // 아직 하나도 안 가진 국가는 집계에 없어서 이름을 못 찾는다. 그래도 "US" 대신
 // "미국(US)" 로 보여야 경고가 읽힌다.
-const COUNTRY_NAME = { KR: '대한민국', US: '미국', VN: '베트남', JP: '일본',
-  CN: '중국', HK: '홍콩', TW: '대만', DE: '독일', GB: '영국', IN: '인도' };
-
 function labelFor(dim, key) {
-  if (dim === 'country') return `${COUNTRY_NAME[key] || key}(${key})`;
+  if (dim === 'country') return `${COUNTRY_NAMES[key] || key}(${key})`;
   return key;
 }
 export const ACTION = { BUY: '매수', SELL: '매도', HOLD: '유지' };

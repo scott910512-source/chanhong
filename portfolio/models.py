@@ -117,6 +117,9 @@ class Position:
     quote: Optional[Quote] = None
     fx_rate: float = 1.0  # 종목통화 -> 기준통화
     weight: float = 0.0  # 전체 대비 비중 (%)
+    # 시세를 못 받은 종목은 산 값으로 쳐서 비중을 낸다 (engine 에서 채운다)
+    value_base: float = 0.0
+    valued_at_cost: bool = False
 
     # ---- 단가 / 평가 ----
     @property

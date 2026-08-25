@@ -2,7 +2,7 @@
 export const KRW = new Intl.NumberFormat('ko-KR');
 
 export const COUNTRY_NAMES = {
-  KR: '대한민국', US: '미국', VN: '베트남', JP: '일본', CN: '중국',
+  KR: '한국', US: '미국', VN: '베트남', JP: '일본', CN: '중국',
   HK: '홍콩', TW: '대만', DE: '독일', GB: '영국', IN: '인도',
 };
 

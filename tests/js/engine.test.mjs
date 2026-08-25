@@ -76,12 +76,23 @@ test('예수금이 비중 분모에 들어간다', () => {
   assert.equal(pf.totalValue, 3_000_000);
 });
 
-test('시세가 없으면 비중에서 빠지고 목록에 남는다', () => {
+test('시세가 없으면 산 값으로 치고 목록·비중에 남는다', () => {
+  // 0 원으로 빼버리면 방금 넣은 종목이 총 자산에서 사라지고
+  // 국가·섹터 비중도 안 나와서 경고가 통째로 죽는다.
   const d = db();
   delete d.quotes['005930.KS'];
   const pf = buildPortfolio(d);
   assert.deepEqual(pf.missingPrices, ['005930.KS']);
-  assert.equal(pf.totalValue, 1_950_000);
+  const kr = pf.positions.find((p) => p.ticker === '005930.KS');
+  assert.equal(kr.hasPrice, false);
+  assert.equal(kr.valuedAtCost, true);
+  assert.equal(kr.marketValueBase, null);          // 현재 가치는 모르는 채로 둔다
+  assert.equal(kr.valueBase, 700_000);             // 10주 × 70,000 매입가
+  assert.equal(kr.unrealizedPlBase, null);         // 평가손익도 모른다
+  assert.equal(pf.totalValue, 1_950_000 + 700_000);
+  assert.equal(pf.pricedValue, 1_950_000);         // 시세 받은 몫은 따로 남는다
+  const byCountry = Object.fromEntries(pf.breakdowns.country.map((b) => [b.key, b]));
+  assert.equal(byCountry.KR.marketValue, 700_000); // 국가 비중에서 사라지지 않는다
 });
 
 test('환율이 없으면 미확보 통화로 보고한다', () => {

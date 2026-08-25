@@ -1,9 +1,7 @@
 // 화면 그리기. 상태 변경은 app.js 가 하고 여기서는 DOM 만 만든다.
 
-import { num, signed, pct, price, plClass, esc, el, relTime } from './util.js';
+import { num, signed, pct, price, plClass, esc, el, relTime, COUNTRY_NAMES } from './util.js';
 import { ACTION, bandOf, consolidate, currentValue, formatValue } from './rules.js';
-
-const COUNTRY_NAME = { KR: '한국', US: '미국', VN: '베트남', JP: '일본', CN: '중국', HK: '홍콩', TW: '대만' };
 
 // 검증된 카테고리 팔레트 8색 + '기타'. 순서 고정이고 절대 돌려쓰지 않는다.
 const SERIES = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)',
@@ -159,7 +157,7 @@ function allocItems(pf, db, dim, basis) {
     }
     return {
       key,
-      label: dim === 'country' ? (COUNTRY_NAME[key] || key) : key,
+      label: dim === 'country' ? (COUNTRY_NAMES[key] || key) : key,
       weight, target, state, value: b ? b.marketValue : 0, empty: !b,
     };
   };
@@ -233,7 +231,8 @@ export function renderHoldingsCard(pf, sort) {
       </span>
       <span class="num">${num(p.quantity, p.quantity % 1 ? 2 : 0)}주</span>
       <span class="num">${price(p.avgPriceLocal, p.asset.currency)}</span>
-      <span class="num">${p.hasPrice ? num(p.marketValueBase) : '—'}</span>
+      <span class="num">${p.hasPrice ? num(p.marketValueBase)
+    : `${num(p.valueBase)}<small class="atcost">매입가</small>`}</span>
       <span class="pl ${plClass(p.unrealizedPlBase)}">${signed(p.unrealizedPlBase)}
         <small>${pct(p.returnPct, 2, true)}</small></span>
       <span class="chev">›</span>
@@ -266,7 +265,15 @@ export function renderStatus(pf, db) {
     .filter((c) => c !== pf.baseCurrency && (db.fx?.sources?.[c] || '') === '예시값');
   const newest = Object.values(db.quotes || {}).map((q) => q.asOf).filter(Boolean).sort().pop();
 
-  if (!pf.positions.length) { el('#statusBar').innerHTML = ''; return; }
+  // 엔진이 잡아낸 기록 오류(보유보다 많은 매도 등)를 여기서 알린다.
+  // 이걸 안 보여주면 잘못 넣은 걸 영영 모른 채 숫자만 이상해진다.
+  const bad = pf.errors || [];
+  const badBar = bad.length ? `<div style="padding:12px 16px 0">
+    <button class="synced off" style="margin:0" data-goto>
+      <span class="dot"></span><span>거래 기록 확인 ${bad.length}건 — ${esc(bad[0])}</span>
+      <span>›</span></button></div>` : '';
+
+  if (!pf.positions.length) { el('#statusBar').innerHTML = badBar; return; }
   let cls = '';
   let text;
   if (fake || missing || fakeFx.length) {
@@ -279,12 +286,11 @@ export function renderStatus(pf, db) {
   } else {
     text = `시세 ${relTime(newest)} 기준`;
   }
-  el('#statusBar').innerHTML = `<div style="padding:12px 16px 0">
+  el('#statusBar').innerHTML = `${badBar}<div style="padding:12px 16px 0">
     <button class="synced ${cls}" style="margin:0" data-goto-quotes>
       <span class="dot"></span><span>${esc(text)}</span><span>›</span></button></div>`;
 }
 
-// ─────────────────────────────── 매매 안내
 // ─────────────────────────────── 상단 안내
 // 기본은 한 줄. 눌러야 펴지고, ✕ 로 닫을 수 있다.
 // 닫아도 헤더 종 아이콘의 숫자는 남으므로 언제든 다시 부를 수 있다.
