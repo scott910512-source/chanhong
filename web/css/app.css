@@ -37,9 +37,8 @@ p{margin:0}
 }
 .brand{display:flex;align-items:center;gap:10px;min-width:0}
 .logo{
-  width:30px;height:30px;border-radius:9px;flex:none;
-  background:linear-gradient(145deg,var(--accent),#7aa7ff);
-  box-shadow:inset 0 -6px 10px rgba(0,0,0,.15);
+  width:30px;height:30px;border-radius:9px;flex:none;object-fit:cover;
+  box-shadow:0 1px 3px rgba(0,0,0,.25);
 }
 .sub{font-size:11.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52vw}
 .top-actions{display:flex;gap:6px;flex:none}

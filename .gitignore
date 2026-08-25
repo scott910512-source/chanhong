@@ -14,3 +14,7 @@ portfolio.json
 
 # 앱에서 저장한 설정 오버라이드 (개인 설정이라 커밋 안 함)
 data/settings.overrides.json
+
+# 아이콘 재생성할 때만 쓰는 playwright
+node_modules/
+package-lock.json
