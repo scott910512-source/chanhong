@@ -4,7 +4,7 @@
   python3 -m portfolio show --refresh  캐시 무시하고 시세 새로 받기
   python3 -m portfolio show --offline  네트워크 없이 마지막 캐시로 계산
   python3 -m portfolio html            web/dashboard.html 생성
-  python3 -m portfolio serve           대시보드를 로컬 웹서버로 띄우기(폰에서 접속 가능)
+  python3 -m portfolio serve           웹앱(PWA)을 띄우기 - 같은 와이파이면 폰에서 접속
   python3 -m portfolio import <파일>   폰/엑셀에서 받은 거래내역을 표준 CSV 에 병합
   python3 -m portfolio export --json out.json --csv out.csv
   python3 -m portfolio providers       붙어 있는 시세 API 목록/상태
@@ -101,21 +101,12 @@ def cmd_html(args) -> int:
 
 
 def cmd_serve(args) -> int:
-    import functools
-    import http.server
-    import socketserver
+    """웹앱(PWA)을 띄운다. 앱은 브라우저 저장소로 독립 동작하지만,
+    이 서버가 켜져 있으면 시세 수집을 서버가 대신 해준다(CORS 우회)."""
+    from .server import AppContext, serve
 
-    cmd_html(args)
-    root = Path(args.out).parent.resolve()
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(root))
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer((args.host, args.port), handler) as httpd:
-        print(f"http://localhost:{args.port}/{Path(args.out).name} 에서 확인 "
-              f"(같은 와이파이면 폰에서도 접속 가능). Ctrl+C 로 종료")
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\n종료")
+    ctx = AppContext(Path(args.settings), Path(args.transactions), Path(args.cache))
+    serve(ctx, host=args.host, port=args.port)
     return 0
 
 

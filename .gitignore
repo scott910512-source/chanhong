@@ -11,3 +11,6 @@ data/cache/quotes.json
 web/dashboard.html
 *.local.*
 portfolio.json
+
+# 앱에서 저장한 설정 오버라이드 (개인 설정이라 커밋 안 함)
+data/settings.overrides.json

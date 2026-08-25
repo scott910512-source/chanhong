@@ -1,0 +1,25 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pyyaml
+      - name: 파이썬 엔진 테스트
+        run: python -m unittest discover -s tests -t .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 웹앱 엔진 테스트
+        run: node --test "tests/js/*.test.mjs"
+      - name: CLI 동작 확인 (오프라인)
+        run: python -m portfolio show --offline --no-color

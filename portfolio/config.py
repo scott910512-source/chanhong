@@ -12,6 +12,8 @@ from .models import Asset
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 DEFAULT_SETTINGS = DATA_DIR / "settings.yaml"
+# 웹앱에서 바꾼 설정은 YAML 주석을 깨지 않도록 이 파일에 따로 저장하고 위에 덮어쓴다.
+OVERRIDES_NAME = "settings.overrides.json"
 DEFAULT_TRANSACTIONS = DATA_DIR / "transactions.csv"
 DEFAULT_CACHE = DATA_DIR / "cache" / "quotes.json"
 DEFAULT_OUT = ROOT / "web" / "dashboard.html"
@@ -128,8 +130,29 @@ def _load_raw(path: Path) -> dict:
     return json.loads(text)
 
 
+def deep_merge(base: dict, over: dict) -> dict:
+    """중첩 dict 병합. 리스트/스칼라는 통째로 교체한다."""
+    out = dict(base)
+    for k, v in (over or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def overrides_path(settings_path: Path | str = DEFAULT_SETTINGS) -> Path:
+    return Path(settings_path).parent / OVERRIDES_NAME
+
+
 def load_settings(path: Path | str = DEFAULT_SETTINGS) -> Settings:
     raw = _load_raw(Path(path))
+    ov = overrides_path(path)
+    if ov.exists():
+        try:
+            raw = deep_merge(raw, json.loads(ov.read_text(encoding="utf-8")))
+        except json.JSONDecodeError:
+            pass
     s = Settings(raw=raw)
     s.base_currency = str(raw.get("base_currency", "KRW")).upper()
     s.display_currency = raw.get("display_currency")

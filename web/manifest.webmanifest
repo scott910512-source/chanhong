@@ -1,0 +1,23 @@
+{
+  "name": "내 주식 관리",
+  "short_name": "내 주식",
+  "description": "보유 주식과 국가별·섹터별 비중을 관리하는 개인용 앱",
+  "id": "/chanhong-portfolio",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e1117",
+  "theme_color": "#0e1117",
+  "lang": "ko",
+  "dir": "ltr",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "거래 추가", "short_name": "추가", "url": "./?add=1" }
+  ]
+}

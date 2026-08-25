@@ -9,14 +9,84 @@
 - 모든 안내는 **BYPASS(예외 처리)** 로 끌 수 있고, 꺼진 것도 사유와 함께 화면에 남는다
 
 ```
+python3 -m portfolio serve         # 폰에서 쓸 웹앱(PWA) 띄우기
 python3 -m portfolio show          # 터미널 리포트
-python3 -m portfolio html          # web/dashboard.html 생성
-python3 -m portfolio serve         # 브라우저/폰에서 보기
+python3 -m portfolio html          # 정적 리포트 HTML 생성
 ```
 
 ---
 
-## 1. 빠른 시작
+## 0. 폰에서 쓰는 앱 (PWA) — 여기부터 보세요
+
+`web/` 폴더가 **설치형 웹앱**입니다. 폰 홈 화면에 추가하면 일반 앱처럼 열리고,
+비행기 모드에서도 켜지며, **매수 내역을 앱에서 직접 입력**해서 관리합니다.
+
+### 여는 방법 3가지
+
+| 방법 | 준비 | 폰에서 쓰기 |
+|---|---|---|
+| **① GitHub Pages** (권장) | 저장소 Settings → Pages → Source 를 **GitHub Actions** 로 변경 | `https://<계정>.github.io/<저장소>/` 접속 → 홈 화면에 추가 |
+| **② PC 에서 서버** | `python3 -m portfolio serve` | 같은 와이파이에서 `http://<PC IP>:8765` |
+| **③ 아무 정적 호스팅** | `web/` 폴더 통째로 업로드 | 그 주소로 접속 |
+
+> 서비스워커(오프라인 실행)는 **https 또는 localhost 에서만** 동작합니다.
+> 파일을 직접 열면(`file://`) 앱은 돌아가지만 오프라인 캐시는 안 됩니다.
+
+### 화면 구성
+
+- **맨 위 — 보유 주식 현황**: 종목별 비중 / 수익률 / 주수 / 평단 / 현재가 / 평가액.
+  현재가 숫자를 누르면 **직접 고칠 수 있습니다.**
+- **그 아래 — 관리 현황**: 국가 · 섹터 · 종목 · 통화 · 계좌 · 태그 · 자산군 **7개 축**을
+  칩으로 전환하며 봅니다. 목표를 걸어둔 항목은 `비중 많음 / 적정 / 비중 적음` 으로 판정됩니다.
+- **매매 안내**: 목표를 벗어난 만큼 **몇 원어치 · 몇 주**를 사고팔면 되는지 나옵니다.
+- 오른쪽 위 **+ 추가** — 일자 / 종목 / 구분 / 수량 / 단가 / 수수료 / 계좌 / 메모 입력.
+  목록에서 항목을 누르면 수정·삭제됩니다.
+- 오른쪽 위 **설치** — 홈 화면에 추가 (아이폰은 공유 → 홈 화면에 추가).
+
+### 목표는 3가지 방식으로 걸 수 있습니다
+
+| 기준 | 예시 | 허용오차 의미 |
+|---|---|---|
+| **비중 %** | 미국 55% | ±%p (예: 5 → 50~60%) |
+| **투자금액** | LG전자 300만원 | 목표의 ±% (예: 10 → 270~330만원) |
+| **주 수량** | 삼성전자 100주 | 목표의 ±% |
+
+축(국가/섹터/종목/…)마다 여러 개를 섞어 쓸 수 있습니다.
+예시 데이터에는 삼성전자를 **주 수량 100주**, LG전자를 **투자금액 300만원**,
+나머지는 **비중 %** 로 걸어놨습니다.
+
+### 데이터는 어디에 저장되나요 (리셋 안 되나요?)
+
+- 저장 위치는 **그 기기의 브라우저 저장소**입니다. 서버로 아무것도 보내지 않습니다.
+- 새로고침·앱 재시작·폰 재부팅으로는 **지워지지 않습니다.**
+- 안전장치를 3중으로 걸어놨습니다.
+  1. `localStorage` 기본 저장 + `IndexedDB` 사본 (하나가 비면 다른 쪽에서 복구)
+  2. `navigator.storage.persist()` 로 **브라우저 자동 정리 대상에서 제외** 요청
+     (설정 탭에서 "영구보관 켜짐" 여부를 확인할 수 있습니다)
+  3. 저장할 때마다 **되돌리기 지점 5개** 보관 → 설정 탭의 `되돌리기`
+- 다만 **브라우저 사이트 데이터 삭제**, **앱 삭제**, **시크릿 모드**는 못 막습니다.
+  설정 탭의 `전체 백업(JSON)` 을 가끔 눌러 파일로 받아두세요. 그 파일로 언제든 복원됩니다.
+- 아이폰 Safari 는 홈 화면에 추가하지 않고 브라우저 탭으로만 쓰면 오래 방치 시
+  저장소를 정리할 수 있습니다. **홈 화면에 추가해서 쓰는 걸 권합니다.**
+
+### 폰에서 실시간 시세
+
+브라우저는 CORS 정책 때문에 아무 API나 못 부릅니다. Yahoo·네이버·Stooq 는 브라우저에서 직접
+호출이 막혀 있어서, 폰에서 쓸 수 있는 경로는 이렇습니다.
+
+1. **무료 API 키 입력** (설정 탭 → 시세 API) — 이게 제일 간단합니다.
+   - `Twelve Data` (800회/일, 한국·베트남 포함) ← 한 개만 넣는다면 이걸 추천
+   - `Finnhub` (60회/분, 미국), `Alpha Vantage` (25회/일)
+2. **PC 서버 사용** — `python3 -m portfolio serve` 가 켜져 있으면 앱이 자동으로 감지해서
+   서버 쪽 공급자(Yahoo/네이버/베트남 등 8종)를 씁니다.
+3. **직접 입력** — 보유 현황 표의 현재가를 눌러 숫자만 고치면 됩니다. 키도 서버도 필요 없습니다.
+
+환율은 키 없이 브라우저에서 바로 받아집니다(frankfurter / open.er-api / exchangerate.host).
+
+
+---
+
+## 1. CLI 로 쓰기 (PC)
 
 ```bash
 git clone <이 저장소>
@@ -232,31 +302,51 @@ python3 -m portfolio export --json out.json --csv out.csv
 ## 8. 구조
 
 ```
-portfolio/
-  models.py      Asset / Transaction / Quote / Position / Signal / PlanItem
-  config.py      settings.yaml 로딩, 목표·밴드·예외 파싱
-  loader.py      거래내역 파일 읽기(한글 헤더·다양한 포맷)
-  httpx.py       표준 라이브러리 HTTP 헬퍼
-  providers/     시세 API 어댑터 (yahoo/naver/vietnam/stooq/키필요 4종)
-  fx.py          환율 (5개 소스 폴백)
-  quotes.py      공급자 폴백 체인 + 캐시 + 병렬 수집
-  engine.py      포지션 계산, 축별 집계, 집중도 지표
-  rules.py       목표 대비 판정, BYPASS, 주문서 합산
-  report.py      터미널 출력(한글 폭 정렬)
-  dashboard.py   단일 HTML 대시보드
-  exporter.py    JSON/CSV 내보내기
-  cli.py         커맨드라인
+web/                     ← 폰에서 쓰는 PWA (독립 동작, 서버 불필요)
+  index.html             화면 골격
+  css/app.css            폰 우선 스타일 (라이트/다크 자동)
+  js/store.js            localStorage + IndexedDB + 스냅샷 저장소
+  js/engine.js           평단·평가·비중·축별 집계  (portfolio/engine.py 와 같은 계산)
+  js/rules.js            목표 판정(비중%/금액/주수) · BYPASS · 주문서 합산
+  js/quotes.js           브라우저 시세 수집 (CORS 되는 공급자 + 로컬 서버)
+  js/ui.js  js/app.js    렌더링 / 이벤트
+  sw.js  manifest.webmanifest  icons/   오프라인 실행 + 홈 화면 설치
+
+portfolio/               ← PC 용 CLI + 로컬 API 서버
+  models.py    Asset / Transaction / Quote / Position / Signal / PlanItem
+  config.py    settings.yaml 로딩 (+ 앱이 저장한 settings.overrides.json 병합)
+  loader.py    거래내역 파일 읽기·쓰기·삭제 (한글 헤더, 다양한 포맷)
+  httpx.py     표준 라이브러리 HTTP 헬퍼
+  providers/   시세 API 어댑터 8종
+  fx.py        환율 (5개 소스 폴백)
+  quotes.py    공급자 폴백 체인 + 캐시 + 병렬 수집
+  engine.py    포지션 계산, 축별 집계, 집중도 지표
+  rules.py     목표 대비 판정, BYPASS, 주문서 합산
+  report.py    터미널 출력 (한글 폭 정렬)
+  dashboard.py 정적 리포트 HTML
+  exporter.py  JSON/CSV 내보내기
+  server.py    PWA 서빙 + JSON API (앱의 시세 수집 대행)
+  cli.py       커맨드라인
+
 data/
-  settings.yaml        설정 (여기만 고치면 됨)
-  transactions.csv     내 매매 이력
-  cache/quotes.json    시세 캐시 (자동 생성, git 제외)
-  cache/quotes.seed.json  데모용 스냅샷
-tests/                 38개 테스트
+  settings.yaml            설정 (CLI 기준)
+  settings.overrides.json  앱에서 바꾼 설정 (있으면 위에 덮어씀, 자동 생성)
+  transactions.csv         매매 이력
+  cache/quotes.json        시세 캐시 (자동 생성, git 제외)
+  cache/quotes.seed.json   데모용 스냅샷
+
+tools/make_icons.py        앱 아이콘 PNG 생성
+tests/                     파이썬 38개 + 웹앱 26개
 ```
 
 ```bash
-python3 -m unittest discover -s tests -t .
+python3 -m unittest discover -s tests -t .   # 계산·규칙·예외·로더
+node --test "tests/js/*.test.mjs"            # 웹앱 엔진 (같은 값이 나오는지 포함)
 ```
+
+> 계산 로직이 파이썬과 자바스크립트 양쪽에 있는 건, 앱이 서버 없이 폰에서 혼자
+> 돌아가야 하기 때문이다. 두 엔진이 **예시 데이터에서 같은 값**을 내는지 테스트로
+> 고정해놨다 (`예시 데이터는 파이썬 엔진과 같은 값이 나온다`).
 
 ---
 

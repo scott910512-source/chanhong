@@ -37,6 +37,7 @@ _alias("price", "price", "단가", "가격", "매입가", "체결단가", "평�
 _alias("fee", "fee", "commission", "수수료", "제비용", "세금", "tax")
 _alias("account", "account", "계좌", "증권사", "broker", "계좌명")
 _alias("note", "note", "memo", "메모", "비고", "comment")
+_alias("id", "id", "거래id", "txid", "uid")
 
 BUY_WORDS = {"buy", "b", "매수", "구매", "buy1", "매입", "+"}
 SELL_WORDS = {"sell", "s", "매도", "판매", "-"}
@@ -115,7 +116,7 @@ def _row_to_tx(row: dict, source: str, lineno: int) -> Transaction | None:
     except ValueError as e:
         raise LoaderError(f"{source}:{lineno} 숫자 변환 실패: {e}") from e
 
-    return Transaction(
+    tx = Transaction(
         date=_date(data.get("date"), source, lineno),
         ticker=str(data["ticker"]).strip(),
         side=side,
@@ -124,7 +125,10 @@ def _row_to_tx(row: dict, source: str, lineno: int) -> Transaction | None:
         fee=_num(data.get("fee", 0)) if data.get("fee") else 0.0,
         account=str(data.get("account", "기본")).strip() or "기본",
         note=str(data.get("note", "")).strip(),
+        id=str(data.get("id", "")).strip(),
     )
+    tx.ensure_id()
+    return tx
 
 
 def _num(v) -> float:
@@ -153,29 +157,70 @@ def _date(v, source: str, lineno: int) -> dt.date:
     raise LoaderError(f"{source}:{lineno} 날짜 형식을 못 읽었습니다: '{v}'")
 
 
-def append_transactions(target: Path | str, txs: list[Transaction]) -> int:
-    """가져온 거래를 표준 CSV 에 덧붙인다 (중복은 건너뜀)."""
+COLUMNS = ["date", "ticker", "side", "quantity", "price", "fee", "account", "note", "id"]
+
+
+def _row(t: Transaction) -> list[str]:
+    return [t.date.isoformat(), t.ticker, t.side, _fmt(t.quantity), _fmt(t.price),
+            _fmt(t.fee), t.account, t.note, t.ensure_id()]
+
+
+def write_transactions(target: Path | str, txs: list[Transaction]) -> int:
+    """거래내역 전체를 다시 쓴다 (수정·삭제용)."""
     target = Path(target)
-    existing: set[tuple] = set()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(COLUMNS)
+        for t in sorted(txs, key=lambda x: (x.date, x.ticker)):
+            w.writerow(_row(t))
+    return len(txs)
+
+
+def append_transactions(target: Path | str, txs: list[Transaction]) -> int:
+    """가져온 거래를 표준 CSV 에 덧붙인다 (id 또는 내용이 같으면 건너뜀)."""
+    target = Path(target)
+    ids: set[str] = set()
+    keys: set[tuple] = set()
     if target.exists():
         for t in load_transactions(target):
-            existing.add((t.date, t.ticker, t.side, t.quantity, t.price, t.account))
-    new_rows = [
-        t for t in txs
-        if (t.date, t.ticker, t.side, t.quantity, t.price, t.account) not in existing
-    ]
+            ids.add(t.ensure_id())
+            keys.add(t.natural_key)
+
+    new_rows = []
+    for t in txs:
+        t.ensure_id()
+        if t.id in ids or t.natural_key in keys:
+            continue
+        ids.add(t.id)
+        keys.add(t.natural_key)
+        new_rows.append(t)
     if not new_rows:
         return 0
+
     write_header = not target.exists()
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         if write_header:
-            w.writerow(["date", "ticker", "side", "quantity", "price", "fee", "account", "note"])
+            w.writerow(COLUMNS)
         for t in new_rows:
-            w.writerow([t.date.isoformat(), t.ticker, t.side, _fmt(t.quantity),
-                        _fmt(t.price), _fmt(t.fee), t.account, t.note])
+            w.writerow(_row(t))
     return len(new_rows)
+
+
+def delete_transactions(target: Path | str, ids: list[str]) -> int:
+    """id 목록에 해당하는 거래를 지운다. 지워진 개수를 반환."""
+    target = Path(target)
+    if not target.exists():
+        return 0
+    remove = set(ids)
+    current = load_transactions(target)
+    kept = [t for t in current if t.ensure_id() not in remove]
+    removed = len(current) - len(kept)
+    if removed:
+        write_transactions(target, kept)
+    return removed
 
 
 def _fmt(v: float) -> str:

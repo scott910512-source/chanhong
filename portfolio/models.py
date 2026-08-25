@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -38,6 +39,17 @@ class Transaction:
     fee: float = 0.0
     account: str = "기본"
     note: str = ""
+    id: str = ""  # 앱에서 수정·삭제할 때 쓰는 고유값. 비어 있으면 자동 생성
+
+    @property
+    def natural_key(self) -> tuple:
+        return (self.date, self.ticker, self.side, self.quantity, self.price, self.account)
+
+    def ensure_id(self) -> str:
+        if not self.id:
+            raw = "|".join(str(x) for x in self.natural_key)
+            self.id = "tx_" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+        return self.id
 
     @property
     def signed_qty(self) -> float:
