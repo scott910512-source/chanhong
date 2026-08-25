@@ -39,16 +39,28 @@
     <div id="summary" class="summary"></div>
     <div id="loginBar"></div>
     <div id="topWarn"></div>
-    <div id="statusBar"></div>
 
-    <p class="group-title">내 종목 <span id="posCount" class="tail"></span></p>
-    <div id="listPositions" class="group"></div>
+    <p class="group-title full">한눈에 보기</p>
+    <div id="chartCard"></div>
 
-    <p class="group-title">국가별 비중</p>
-    <div id="listCountry" class="group"></div>
+    <div class="col-a">
+      <p class="group-title">
+        내 종목 <span id="posCount" class="tail"></span>
+      </p>
+      <div class="sort-wrap">
+        <div class="mini-seg" id="sortSeg"></div>
+      </div>
+      <div id="listPositions" class="group"></div>
+      <div id="statusBar"></div>
+    </div>
 
-    <p class="group-title">섹터별 비중</p>
-    <div id="listSector" class="group"></div>
+    <div class="col-b">
+      <p class="group-title">국가별 비중</p>
+      <div id="listCountry" class="group"></div>
+
+      <p class="group-title">섹터별 비중</p>
+      <div id="listSector" class="group"></div>
+    </div>
 
     <div class="group-foot">
       <button id="btnRefresh" class="btn-plain wide">시세 새로고침</button>
@@ -132,7 +144,9 @@
         <label class="row"><span>수량</span>
           <input name="quantity" type="text" inputmode="decimal" placeholder="0" required></label>
         <label class="row"><span id="priceLabel">단가</span>
-          <input name="price" type="text" inputmode="decimal" placeholder="0" required></label>
+          <input name="price" type="text" inputmode="decimal" placeholder="0" required>
+          <button type="button" id="btnUseQuote" class="btn-plain" style="flex:none;font-size:13px;padding:6px 10px">현재가</button>
+        </label>
         <label class="row"><span>수수료</span>
           <input name="fee" type="text" inputmode="decimal" placeholder="0"></label>
         <label class="row"><span>계좌</span>

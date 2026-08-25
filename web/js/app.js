@@ -14,6 +14,7 @@ const store = new Store();
 const state = {
   db: null, pf: null, signals: [], bypassReg: null,
   screen: 'home', editingTxId: null, picked: null,
+  sort: 'amount', chartDim: 'ticker',
   installPrompt: null, fetchLog: [],
 };
 
@@ -33,7 +34,9 @@ function render() {
   ui.renderSummary(pf);
   ui.renderTopWarnings(pf, state.signals, { expanded: state.tipsExpanded });
   ui.renderStatus(pf, db);
-  ui.renderPositions(pf);
+  ui.renderWeightChart(pf, db, state.chartDim);
+  renderSortSeg();
+  ui.renderPositions(pf, state.sort);
   ui.renderBreakdown('#listCountry', pf, db, 'country');
   ui.renderBreakdown('#listSector', pf, db, 'sector');
   ui.renderManage(pf, db, { search: el('#txSearch').value, open: state.openStock });
@@ -54,6 +57,11 @@ function renderLoginBar() {
       <span>로그인하면 폰·컴퓨터에서 같은 데이터를 볼 수 있습니다</span>
       <span class="chev">›</span>
     </button>`;
+}
+
+function renderSortSeg() {
+  el('#sortSeg').innerHTML = Object.entries(ui.SORTS).map(([k, v]) =>
+    `<button data-sort="${k}" class="${k === state.sort ? 'on' : ''}">${v}</button>`).join('');
 }
 
 function openLogin() {
@@ -234,7 +242,7 @@ function editPrice(ticker) {
     source: '직접입력', asOf: new Date().toISOString(), stale: false,
   });
   save();
-  toast('반영했습니다');
+  toast('현재가를 저장했습니다');
 }
 
 // ─────────────────────────────── 시세
@@ -727,6 +735,29 @@ function wire() {
   el('#loginBar').addEventListener('click', (e) => {
     if (e.target.closest('[data-goto-login]')) openLogin();
   });
+  el('#sortSeg').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-sort]');
+    if (!b) return;
+    state.sort = b.dataset.sort;
+    renderSortSeg();
+    ui.renderPositions(state.pf, state.sort);
+  });
+  el('#chartCard').addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-chart-dim]');
+    if (tab) {
+      state.chartDim = tab.dataset.chartDim;
+      ui.renderWeightChart(state.pf, state.db, state.chartDim);
+      return;
+    }
+    const lg = e.target.closest('[data-legend]');
+    if (lg && state.chartDim === 'ticker' && lg.dataset.legend !== '__other') {
+      showScreen('trades');
+      state.openStock = lg.dataset.legend;
+      ui.renderManage(state.pf, state.db, {
+        search: el('#txSearch').value, open: state.openStock,
+      });
+    }
+  });
   el('#btnAddStock').addEventListener('click', () => openSheet());
   els('[data-close]').forEach((b) => b.addEventListener('click', closeSheet));
   els('[data-close-more]').forEach((b) => b.addEventListener('click', closeMore));
@@ -736,6 +767,14 @@ function wire() {
   el('#txForm').addEventListener('submit', (e) => { e.preventDefault(); submitTx(); });
   el('#pickedChip').addEventListener('click', () => openSheet(state.editingTxId));
   el('#pickSearch').addEventListener('input', doSearch);
+  el('#btnUseQuote').addEventListener('click', () => {
+    const t = state.picked?.ticker;
+    const q = t && state.db.quotes[t];
+    if (!q || !Number.isFinite(q.price)) return toast('저장된 현재가가 없습니다', 'err');
+    el('#txForm').price.value = q.price;
+    updatePreview();
+    toast(`현재가 ${q.price.toLocaleString('ko-KR')} 적용`);
+  });
 
   el('#pickResults').addEventListener('click', (e) => {
     const pick = e.target.closest('[data-pick]');
@@ -764,6 +803,9 @@ function wire() {
 
     const drop = e.target.closest('[data-drop]');
     if (drop) return dropStock(drop.dataset.drop);
+
+    const pr = e.target.closest('[data-price]');
+    if (pr) return editPrice(pr.dataset.price);
 
     const head = e.target.closest('[data-stock]');
     if (head) {

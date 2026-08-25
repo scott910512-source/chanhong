@@ -6,6 +6,84 @@ import { ACTION, bandOf, consolidate, currentValue, formatValue } from './rules.
 
 const COUNTRY_FLAG = { KR: '한국', US: '미국', VN: '베트남', JP: '일본', CN: '중국', HK: '홍콩' };
 
+// 검증된 카테고리 팔레트 8색 + '기타'. 순서 고정이고 절대 돌려쓰지 않는다.
+// 9번째부터는 색을 새로 만들지 않고 '기타'로 접는다.
+const SERIES = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)',
+  'var(--s5)', 'var(--s6)', 'var(--s7)', 'var(--s8)'];
+const OTHER = 'var(--s9)';
+const MAX_SERIES = 8;
+
+export const SORTS = {
+  amount: '금액순',
+  gain: '수익률순',
+  name: '이름순',
+};
+
+export function sortPositions(positions, key) {
+  const list = [...positions];
+  if (key === 'gain') {
+    return list.sort((a, b) => (b.returnPct ?? -Infinity) - (a.returnPct ?? -Infinity));
+  }
+  if (key === 'name') return list.sort((a, b) => a.asset.name.localeCompare(b.asset.name, 'ko'));
+  return list.sort((a, b) => (b.marketValueBase || 0) - (a.marketValueBase || 0));
+}
+
+// ─────────────────────────────── 비중 차트 (최상단)
+// 하는 일은 '전체에서 각자 얼마씩 차지하나' -> 100% 누적 가로 막대 하나면 충분하다.
+// 색만으로 구분되지 않게 아래 범례에 이름·%·금액을 항상 같이 적는다.
+export function renderWeightChart(pf, db, dim = 'ticker') {
+  const src = dim === 'ticker'
+    ? pf.positions.filter((p) => p.hasPrice).map((p) => ({
+      key: p.ticker, label: p.asset.name, value: p.marketValueBase, weight: p.weight,
+    }))
+    : (pf.breakdowns[dim] || []).map((b) => ({
+      key: b.key,
+      label: dim === 'country' ? (COUNTRY_FLAG[b.key] || b.key) : b.key,
+      value: b.marketValue, weight: b.weight,
+    }));
+
+  if (!src.length) {
+    el('#chartCard').innerHTML = `<div class="chart"><div class="empty">
+      종목을 추가하면 비중이 여기 보입니다.</div></div>`;
+    return;
+  }
+
+  src.sort((a, b) => b.value - a.value);
+  const items = src.slice(0, MAX_SERIES);
+  const rest = src.slice(MAX_SERIES);
+  if (rest.length) {
+    items.push({
+      key: '__other', label: `기타 ${rest.length}개`,
+      value: rest.reduce((s2, x) => s2 + x.value, 0),
+      weight: rest.reduce((s2, x) => s2 + x.weight, 0),
+    });
+  }
+  const color = (i) => (items[i].key === '__other' ? OTHER : SERIES[i]);
+
+  const segs = items.map((it, i) => `<div class="seg" style="flex:${Math.max(it.weight, 0.4)};
+    background:${color(i)}" title="${esc(it.label)} ${it.weight.toFixed(1)}%"></div>`).join('');
+
+  const legend = items.map((it, i) => `<button class="lg" data-legend="${esc(it.key)}">
+      <span class="sw" style="background:${color(i)}"></span>
+      <span class="nm">${esc(it.label)}</span>
+      <span class="pc">${pct(it.weight, 1)}</span>
+      <span class="am">${num(it.value)}</span>
+    </button>`).join('');
+
+  const tabs = { ticker: '종목', country: '국가', sector: '섹터' };
+  el('#chartCard').innerHTML = `<div class="chart">
+    <div class="chart-head">
+      <h2>비중</h2>
+      <div class="mini-seg">
+        ${Object.entries(tabs).map(([k, v]) =>
+    `<button data-chart-dim="${k}" class="${k === dim ? 'on' : ''}">${v}</button>`).join('')}
+      </div>
+    </div>
+    <div class="stack">${segs}</div>
+    <div class="legend">${legend}</div>
+  </div>`;
+}
+
 // ─────────────────────────────── 맨 위 요약 (한두 줄)
 export function renderSummary(pf) {
   const pl = pf.unrealizedPl;
@@ -46,14 +124,14 @@ export function renderStatus(pf, db) {
 }
 
 // ─────────────────────────────── 내 종목
-export function renderPositions(pf) {
+export function renderPositions(pf, sort = 'amount') {
   el('#posCount').textContent = pf.positions.length ? `${pf.positions.length}종목` : '';
   if (!pf.positions.length) {
     el('#listPositions').innerHTML =
       `<div class="empty">아직 종목이 없습니다.<br>오른쪽 위 <b>추가</b> 를 눌러 시작하세요.</div>`;
     return;
   }
-  el('#listPositions').innerHTML = pf.positions.map((p) => `
+  el('#listPositions').innerHTML = sortPositions(pf.positions, sort).map((p) => `
     <button class="row tap" data-ticker="${esc(p.ticker)}">
       <span>
         <div class="main-txt">${esc(p.asset.name)}</div>
@@ -185,6 +263,11 @@ export function renderManage(pf, db, { search = '', open = null } = {}) {
             × ${price(t.price, cur)}</span>
           <span class="mut" style="font-size:12px">수정 ›</span>
         </button>`).join('') || '<div class="trade mut">매매 내역이 없습니다</div>'}
+        <button class="trade" data-price="${esc(ticker)}">
+          <span class="sd" style="color:var(--tint)">현재가</span>
+          <span style="flex:1">${quoteLine(db, ticker, cur)}</span>
+          <span class="mut" style="font-size:12px">저장 ›</span>
+        </button>
         <div class="act-row">
           <button class="act" data-buy="${esc(ticker)}">+ 매수</button>
           <button class="act" data-sell="${esc(ticker)}">− 매도</button>
@@ -205,6 +288,13 @@ export function renderManage(pf, db, { search = '', open = null } = {}) {
       '<div class="s mut">청산</div>',
     )),
   ].join('');
+}
+
+function quoteLine(db, ticker, cur) {
+  const q = db.quotes[ticker];
+  if (!q || !Number.isFinite(q.price)) return '아직 없음 — 눌러서 입력';
+  const src = q.stale ? '예시값' : (q.source || '');
+  return `${price(q.price, cur)} ${cur}${src ? ` · ${src}` : ''}`;
 }
 
 // ─────────────────────────────── 종목 검색 결과
