@@ -24,7 +24,10 @@
     --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767; --s9:#69717f;
   }
 }
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+/* touch-action:manipulation - 더블탭 확대만 끈다.
+   두 손가락 핀치 확대와 스크롤은 그대로 살아 있다. */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+  touch-action:manipulation}
 html{-webkit-text-size-adjust:100%}
 body{
   margin:0;background:var(--bg);color:var(--label);

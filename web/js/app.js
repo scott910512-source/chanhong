@@ -1170,11 +1170,38 @@ function wire() {
   window.addEventListener('appinstalled', () => { el('#btnInstall').hidden = true; });
 }
 
+// ─────────────────────────────── 더블탭 확대 막기
+// CSS 의 touch-action:manipulation 이 거의 다 잡아주지만, 오래된 사파리는
+// 이걸 무시하고 더블탭 확대를 한다. 그때를 위한 보조 장치.
+// 손가락 하나로 같은 자리를 300ms 안에 두 번 두드린 경우만 막는다.
+// 두 손가락 핀치는 아예 건드리지 않으므로 확대/축소는 그대로 된다.
+function blockDoubleTapZoom() {
+  let lastAt = 0;
+  let lastX = 0;
+  let lastY = 0;
+  document.addEventListener('touchend', (e) => {
+    // 아직 화면에 손가락이 남아 있으면(=핀치 중) 그냥 둔다
+    if (e.touches.length || e.changedTouches.length !== 1) return;
+    const t = e.changedTouches[0];
+    const target = e.target;
+    const near = Math.abs(t.clientX - lastX) < 40 && Math.abs(t.clientY - lastY) < 40;
+    const isField = target && target.closest && target.closest('input,textarea,select');
+    if (e.timeStamp - lastAt < 300 && near && !isField) {
+      // 두 번째 탭의 확대만 취소한다. 첫 탭에서 클릭은 이미 처리됐다.
+      e.preventDefault();
+    }
+    lastAt = e.timeStamp;
+    lastX = t.clientX;
+    lastY = t.clientY;
+  }, { passive: false });
+}
+
 // ─────────────────────────────── 시작
 async function main() {
   await store.init();
   state.db = store.db;
   wire();
+  blockDoubleTapZoom();
   const standalone = window.matchMedia('(display-mode: standalone)').matches
     || window.navigator.standalone === true;
   if (!standalone) el('#btnInstall').hidden = false;
