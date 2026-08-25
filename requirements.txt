@@ -1,0 +1,5 @@
+# 계산·시세 수집은 전부 표준 라이브러리만 씁니다.
+# 아래 둘은 설정/입력 파일 포맷 때문에만 필요합니다.
+
+PyYAML>=6.0      # data/settings.yaml 파싱 (같은 내용을 settings.json 으로 두면 불필요)
+openpyxl>=3.1    # `portfolio import` 로 .xlsx 거래내역을 읽으려면 필요
