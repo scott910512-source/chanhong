@@ -21,11 +21,25 @@ export async function loadConfig() {
     const res = await fetch(`${CONFIG_URL}?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error('없음');
     const d = await res.json();
-    config = (d.url && d.anonKey && !String(d.url).includes('여기에')) ? d : false;
+    const url = normalizeUrl(d.url);
+    config = (url && d.anonKey) ? { ...d, url } : false;
   } catch {
     config = false;
   }
   return config;
+}
+
+// 대시보드 주소를 그대로 붙여넣는 실수가 잦다.
+//   https://supabase.com/dashboard/project/<ref>  ->  https://<ref>.supabase.co
+export function normalizeUrl(raw) {
+  const url = String(raw || '').trim().replace(/\/+$/, '');
+  if (!url) return '';
+  const dash = url.match(/supabase\.com\/dashboard\/project\/([a-z0-9]+)/i);
+  if (dash) return `https://${dash[1]}.supabase.co`;
+  if (/^https:\/\/[a-z0-9]+\.supabase\.co$/i.test(url)) return url;
+  // 프로젝트 ref 만 적어둔 경우도 받아준다
+  if (/^[a-z0-9]{16,}$/i.test(url)) return `https://${url}.supabase.co`;
+  return url.startsWith('http') ? url : '';
 }
 
 export function isConfigured() { return Boolean(config); }
