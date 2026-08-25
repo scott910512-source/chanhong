@@ -1,0 +1,32 @@
+{
+ "generatedAt": "2026-08-25T06:34:48.265276+00:00",
+ "baseCurrency": "KRW",
+ "quotes": {
+  "005930.KS": {
+   "price": 257000.0,
+   "previousClose": 257000.0,
+   "currency": "KRW",
+   "source": "Yahoo 자동수집(naver)",
+   "asOf": "2026-08-25T06:34:32.771340+00:00"
+  },
+  "066570.KS": {
+   "price": 200500.0,
+   "previousClose": 199800.0,
+   "currency": "KRW",
+   "source": "Yahoo 자동수집(naver)",
+   "asOf": "2026-08-25T06:34:32.820312+00:00"
+  }
+ },
+ "fx": {
+  "rates": {
+   "KRW": 1.0,
+   "VND": 0.05300962967631737,
+   "USD": 1383.1258644536654
+  },
+  "sources": {
+   "KRW": "base",
+   "VND": "open.er-api.com",
+   "USD": "open.er-api.com"
+  }
+ }
+}
