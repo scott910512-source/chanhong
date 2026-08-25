@@ -64,6 +64,50 @@ function renderSortSeg() {
     `<button data-sort="${k}" class="${k === state.sort ? 'on' : ''}">${v}</button>`).join('');
 }
 
+// 로그인/가입은 첫 화면과 설정 두 군데서 쓰므로 한 곳에 모아둔다
+async function doAuth(emailRaw, pw, signingUp) {
+  const email = String(emailRaw || '').trim();
+  if (!email || !pw) { toast('이메일과 비밀번호를 넣어주세요', 'err'); return false; }
+  try {
+    toast(signingUp ? '가입하는 중...' : '로그인하는 중...');
+    if (signingUp) {
+      const r = await cloud.signUp(email, pw);
+      if (r.needsConfirm) { toast('메일함에서 인증 링크를 눌러주세요'); return false; }
+    } else {
+      await cloud.signIn(email, pw);
+    }
+    // 예시 데이터를 아직 손대지 않았다면 계정에 섞지 않고 버린다
+    if (state.db.isSample) {
+      await store.clearAll();
+      state.db = store.db;
+    }
+    await syncPull({ quiet: true });
+    await cloud.push(store.payload()).catch(() => {});
+    renderLoginBar();
+    hideWelcome();
+    toast(signingUp ? '가입하고 연결됐습니다' : '로그인됐습니다');
+    return true;
+  } catch (err) {
+    toast(err.message, 'err');
+    return false;
+  }
+}
+
+const SKIP_KEY = 'chanhong.skipWelcome';
+
+function showWelcomeIfNeeded() {
+  const skipped = (() => {
+    try { return localStorage.getItem(SKIP_KEY) === '1'; } catch { return false; }
+  })();
+  const need = cloud.isConfigured() && !cloud.loadSession() && !skipped;
+  el('#welcome').hidden = !need;
+  if (need) setTimeout(() => el('#wcEmail').focus(), 150);
+}
+
+function hideWelcome() {
+  el('#welcome').hidden = true;
+}
+
 function openLogin() {
   showScreen('settings');
   setTimeout(() => openMore('sync'), 80);
@@ -732,6 +776,15 @@ function wire() {
   els('.seg-item').forEach((t) => t.addEventListener('click', () => showScreen(t.dataset.screen)));
   el('#btnAdd').addEventListener('click', () => showScreen('trades'));
   el('#btnLogin').addEventListener('click', openLogin);
+  el('#wcSignIn').addEventListener('click', () => doAuth(el('#wcEmail').value, el('#wcPw').value, false));
+  el('#wcSignUp').addEventListener('click', () => doAuth(el('#wcEmail').value, el('#wcPw').value, true));
+  el('#wcSkip').addEventListener('click', () => {
+    try { localStorage.setItem(SKIP_KEY, '1'); } catch { /* 무시 */ }
+    hideWelcome();
+  });
+  el('#welcome').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doAuth(el('#wcEmail').value, el('#wcPw').value, false);
+  });
   el('#loginBar').addEventListener('click', (e) => {
     if (e.target.closest('[data-goto-login]')) openLogin();
   });
@@ -866,29 +919,9 @@ function wire() {
     const t = e.target;
 
     if (t.closest('#btnCloudIn') || t.closest('#btnCloudUp')) {
-      const email = el('#cloudEmail').value.trim();
-      const pw = el('#cloudPw').value;
-      if (!email || !pw) return toast('이메일과 비밀번호를 넣어주세요', 'err');
-      const signingUp = Boolean(t.closest('#btnCloudUp'));
-      try {
-        toast(signingUp ? '가입하는 중...' : '로그인하는 중...');
-        if (signingUp) {
-          const r = await cloud.signUp(email, pw);
-          if (r.needsConfirm) return toast('메일함에서 인증 링크를 눌러주세요');
-        } else {
-          await cloud.signIn(email, pw);
-        }
-        // 예시 데이터를 아직 손대지 않았다면 계정에 섞지 않고 버린다
-        if (state.db.isSample) {
-          await store.clearAll();
-          state.db = store.db;
-        }
-        await syncPull({ quiet: true });
-        await cloud.push(store.payload()).catch(() => {});
-        el('#moreBody').innerHTML = renderSync();
-        renderLoginBar();
-        toast(signingUp ? '가입하고 연결됐습니다' : '로그인됐습니다');
-      } catch (err) { toast(err.message, 'err'); }
+      const ok = await doAuth(el('#cloudEmail').value, el('#cloudPw').value,
+        Boolean(t.closest('#btnCloudUp')));
+      if (ok) el('#moreBody').innerHTML = renderSync();
       return;
     }
     if (t.closest('#btnCloudSync')) {
@@ -900,6 +933,7 @@ function wire() {
     if (t.closest('#btnCloudOut')) {
       if (!confirm('로그아웃합니다. 이 기기의 데이터는 그대로 남습니다.')) return;
       cloud.clearSession();
+      try { localStorage.removeItem(SKIP_KEY); } catch { /* 무시 */ }
       el('#moreBody').innerHTML = renderSync();
       renderLoginBar();
       return;
@@ -1045,6 +1079,7 @@ async function main() {
   loadSiteQuotes();
   cloud.loadConfig().then(() => {
     renderLoginBar();
+    showWelcomeIfNeeded();
     if (remote()) syncPull({ quiet: true });
   });
 

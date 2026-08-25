@@ -17,6 +17,30 @@
 </head>
 <body>
 
+<!-- ══════════ 로그인 전 첫 화면 ══════════ -->
+<div id="welcome" class="welcome" hidden>
+  <div class="wc-card">
+    <img class="wc-logo" src="icons/icon-192.png" alt="" width="72" height="72">
+    <h2 class="wc-title">웰컴 투 찬홍팍</h2>
+    <p class="wc-sub">내 주식 보유현황과 국가·섹터 비중을<br>한눈에 관리하는 앱입니다</p>
+
+    <div class="group wc-form">
+      <label class="row"><span>이메일</span>
+        <input id="wcEmail" type="email" inputmode="email" autocomplete="username"
+               placeholder="me@example.com"></label>
+      <label class="row"><span>비밀번호</span>
+        <input id="wcPw" type="password" autocomplete="current-password"
+               placeholder="6자 이상"></label>
+    </div>
+
+    <button id="wcSignIn" class="wc-btn primary">로그인</button>
+    <button id="wcSignUp" class="wc-btn">처음이에요 · 가입하기</button>
+    <button id="wcSkip" class="wc-skip">로그인 없이 둘러보기</button>
+    <p class="wc-foot">로그인하면 폰과 컴퓨터에서 같은 데이터를 볼 수 있습니다.<br>
+      로그인 없이 써도 되고, 그때는 이 기기에만 저장됩니다.</p>
+  </div>
+</div>
+
 <header class="nav">
   <div class="nav-bar">
     <h1>찬홍팍</h1>
