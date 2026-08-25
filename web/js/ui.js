@@ -69,16 +69,34 @@ export function renderCountryCard(pf, db, basis) {
   }
   el('#cardCountry').innerHTML = `${head}
     <div class="donut-wrap">
-      ${donut(items, pf)}
+      ${donut(items, pf, basis)}
       <div class="alloc">
-        <div class="alloc-h"><span>국가</span><span style="text-align:right">현재 비중 / 목표 비중</span><span></span></div>
-        ${items.map(allocRow).join('')}
-        ${sumRow(items)}
+        <div class="alloc-h"><span>국가</span>
+          <span style="text-align:right">${colHead(basis)}</span><span></span></div>
+        ${items.map((it) => allocRow(it, basis, pf.baseCurrency)).join('')}
+        ${sumRow(items, basis)}
       </div>
     </div>`;
 }
 
-function donut(items, pf) {
+// 가운데 숫자도 보는 기준을 따라간다. 수량 기준으로 바꿔놓고 금액이 떠 있으면
+// 무슨 기준으로 보고 있는지 알 수가 없다.
+function centerOf(items, pf, basis) {
+  if (basis === 'shares') {
+    const q = items.reduce((s, i) => s + i.shares, 0);
+    return { t: '총 보유', n: `${num(q, q % 1 ? 2 : 0)}주` };
+  }
+  const unit = pf.baseCurrency === 'KRW' ? '원' : ` ${pf.baseCurrency}`;
+  return { t: '총 자산', n: `${num(pf.totalValue)}${unit}` };
+}
+
+// 열 제목도 같이 바뀌어야 헷갈리지 않는다
+function colHead(basis) {
+  return basis === 'shares' ? '보유 수량 / 목표' : '현재 비중 / 목표';
+}
+
+function donut(items, pf, basis) {
+  const center = centerOf(items, pf, basis);
   const R = 52;
   const C = 2 * Math.PI * R;
   let off = 0;
@@ -92,7 +110,7 @@ function donut(items, pf) {
   }).join('');
   return `<div class="donut">
     <svg viewBox="0 0 132 132" width="132" height="132" role="img" aria-label="국가별 비중">${arcs}</svg>
-    <div class="mid"><div class="t">총 자산</div><div class="n">${num(pf.totalValue)}원</div></div>
+    <div class="mid"><div class="t">${esc(center.t)}</div><div class="n">${esc(center.n)}</div></div>
   </div>`;
 }
 
@@ -104,21 +122,27 @@ export function renderSectorCard(pf, db, basis) {
     el('#cardSector').innerHTML = `${head}<div class="empty">종목을 추가하면 보입니다.</div>`;
     return;
   }
-  const max = Math.max(...items.map((i) => Math.max(i.weight, i.target || 0)), 1);
+  // 눈금은 %끼리만 비교된다. 금액 목표(예: 500만)를 여기 섞으면 max 가 튀어서
+  // 막대가 전부 실선처럼 짜부라진다.
+  const max = Math.max(
+    ...items.map((i) => Math.max(i.weight, targetComparable(i, basis) ? i.target : 0)), 1,
+  );
   el('#cardSector').innerHTML = `${head}
     <div class="alloc-h" style="grid-template-columns:70px 1fr auto 22px;display:grid;gap:10px">
-      <span>섹터</span><span></span><span style="text-align:right">현재 비중 / 목표</span><span></span>
+      <span>섹터</span><span></span>
+      <span style="text-align:right">${colHead(basis)}</span><span></span>
     </div>
     ${items.map((it) => `<div class="sbar-r">
       <span class="nm">${esc(it.label)}</span>
       <span class="track">
         <i class="${it.state}" style="width:${Math.min((it.weight / max) * 100, 100).toFixed(1)}%"></i>
-        ${it.target === null ? '' : `<u style="left:${Math.min((it.target / max) * 100, 100).toFixed(1)}%"></u>`}
+        ${targetComparable(it, basis)
+    ? `<u style="left:${Math.min((it.target / max) * 100, 100).toFixed(1)}%"></u>` : ''}
       </span>
-      <span class="vs">${it.weight.toFixed(1)}% <em>/ ${it.target === null ? '—' : `${it.target}%`}</em></span>
+      <span class="vs">${curText(it, basis)} <em>/ ${tgtText(it, pf.baseCurrency)}</em></span>
       ${markFor(it)}
     </div>`).join('')}
-    ${sumRow(items, '70px 1fr auto 22px')}`;
+    ${sumRow(items, basis, '70px 1fr auto 22px')}`;
 }
 
 // ─────────────────────────────── 공통
@@ -158,7 +182,15 @@ function allocItems(pf, db, dim, basis) {
     return {
       key,
       label: dim === 'country' ? (COUNTRY_NAMES[key] || key) : key,
-      weight, target, state, value: b ? b.marketValue : 0, empty: !b,
+      weight,
+      target,
+      // 목표는 %일 수도, 금액일 수도, 주 수일 수도 있다. 단위를 같이 들고 다녀야
+      // "500만원 목표"가 화면에 "5000000%" 로 찍히는 일이 없다.
+      targetMode: item ? bandOf(item, group.tolerance).mode : 'weight',
+      state,
+      value: b ? b.marketValue : 0,
+      shares: b ? (b.quantity || 0) : 0,
+      empty: !b,
     };
   };
 
@@ -176,9 +208,11 @@ function allocItems(pf, db, dim, basis) {
   const rest = held.slice(MAX_SERIES);
   if (rest.length) {
     top.push({
-      key: '__other', label: `기타 ${rest.length}개`, state: '', target: null, empty: false,
+      key: '__other', label: `기타 ${rest.length}개`, state: '', target: null,
+      targetMode: 'weight', empty: false,
       weight: rest.reduce((s, x) => s + x.weight, 0),
       value: rest.reduce((s, x) => s + x.value, 0),
+      shares: rest.reduce((s, x) => s + x.shares, 0),
     });
   }
   top.forEach((it, i) => { it.color = it.key === '__other' ? OTHER : SERIES[i]; });
@@ -186,11 +220,29 @@ function allocItems(pf, db, dim, basis) {
   return [...top, ...missing];
 }
 
-function allocRow(it) {
+// 보는 기준(금액/수량)에 맞춘 '지금 값'
+function curText(it, basis) {
+  if (basis === 'shares') return `${num(it.shares, it.shares % 1 ? 2 : 0)}주`;
+  return `${it.weight.toFixed(1)}%`;
+}
+
+// 목표는 걸어둔 단위 그대로 (비중 % / 투자금액 / 주 수)
+function tgtText(it, baseCurrency) {
+  if (it.target === null) return '—';
+  return formatValue(it.target, it.targetMode, baseCurrency);
+}
+
+// 막대·눈금은 %일 때만 서로 비교가 된다. 금액/주수 목표를 %자리에 그리면
+// 눈금이 화면 밖으로 날아가고 막대가 전부 사라진다.
+function targetComparable(it, basis) {
+  return it.target !== null && it.targetMode === 'weight' && basis === 'amount';
+}
+
+function allocRow(it, basis, cur) {
   return `<div class="alloc-r">
     <span class="nm"><i class="sw${it.empty ? ' none' : ''}" style="background:${it.color}"></i>
       <span>${esc(it.label)}</span></span>
-    <span class="vs">${it.weight.toFixed(1)}% <em>/ ${it.target === null ? '—' : `${it.target}%`}</em></span>
+    <span class="vs">${curText(it, basis)} <em>/ ${tgtText(it, cur)}</em></span>
     ${markFor(it)}
   </div>`;
 }
@@ -203,13 +255,23 @@ function markFor(it) {
   return '<span class="mark ok" title="적정">✓</span>';
 }
 
-function sumRow(items, cols) {
-  const now = items.reduce((s, i) => s + i.weight, 0);
-  const tgt = items.reduce((s, i) => s + (i.target || 0), 0);
+function sumRow(items, basis, cols) {
   const style = cols ? ` style="grid-template-columns:${cols}"` : '';
+  let text;
+  if (basis === 'shares') {
+    const q = items.reduce((s, i) => s + i.shares, 0);
+    // 주 수는 종목마다 단위가 달라서(1주 vs 100주) 목표 합을 더해봐야 뜻이 없다
+    text = `${num(q, q % 1 ? 2 : 0)}주 / —`;
+  } else {
+    const now = items.reduce((s, i) => s + i.weight, 0);
+    // 비중 목표끼리만 더한다. 금액·주수 목표를 섞어 더하면 엉뚱한 수가 나온다
+    const pct = items.filter((i) => i.targetMode === 'weight');
+    const tgt = pct.reduce((s, i) => s + (i.target || 0), 0);
+    text = `${now.toFixed(0)}% / ${tgt ? `${tgt.toFixed(0)}%` : '—'}`;
+  }
   return `<div class="alloc-sum"${style}>
     <span>합계</span>${cols ? '<span></span>' : ''}
-    <span style="text-align:right">${now.toFixed(0)}% / ${tgt ? `${tgt.toFixed(0)}%` : '—'}</span>
+    <span style="text-align:right">${text}</span>
     <span></span></div>`;
 }
 

@@ -1196,6 +1196,7 @@ function blockDoubleTapZoom() {
   let lastAt = 0;
   let lastX = 0;
   let lastY = 0;
+  let lastTarget = null;
   document.addEventListener('touchend', (e) => {
     // 아직 화면에 손가락이 남아 있으면(=핀치 중) 그냥 둔다
     if (e.touches.length || e.changedTouches.length !== 1) return;
@@ -1203,13 +1204,18 @@ function blockDoubleTapZoom() {
     const target = e.target;
     const near = Math.abs(t.clientX - lastX) < 40 && Math.abs(t.clientY - lastY) < 40;
     const isField = target && target.closest && target.closest('input,textarea,select');
-    if (e.timeStamp - lastAt < 300 && near && !isField) {
+    // 같은 자리를 두 번 두드렸어도 '누른 것'이 달라졌으면 진짜 더블탭이 아니다.
+    // 목록이 다시 그려져서 다른 버튼이 손가락 밑에 들어온 경우가 그렇다.
+    // 이걸 안 보면 멀쩡한 두 번째 탭이 통째로 씹힌다.
+    const same = target === lastTarget;
+    if (e.timeStamp - lastAt < 300 && near && same && !isField) {
       // 두 번째 탭의 확대만 취소한다. 첫 탭에서 클릭은 이미 처리됐다.
       e.preventDefault();
     }
     lastAt = e.timeStamp;
     lastX = t.clientX;
     lastY = t.clientY;
+    lastTarget = target;
   }, { passive: false });
 }
 

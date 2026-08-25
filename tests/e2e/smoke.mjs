@@ -111,11 +111,63 @@ for (const s of ['gain', 'name', 'amount']) {
 }
 ok('정렬 세 가지를 눌러도 목록이 남아 있다',
   await page.locator('#cardHoldings .hold-r').count() > 0);
-await page.tap('#cardCountry [data-basis="shares"]').catch(() => {});
-await wait(200);
-ok('수량 기준으로 바꿔도 국가 카드가 그려진다', (await txt('#cardCountry')).length > 10);
-await page.tap('#cardCountry [data-basis="amount"]').catch(() => {});
-await wait(200);
+// 기준을 바꾸면 카드 '전체'가 그 기준으로 바뀌어야 한다.
+// 가운데 숫자만 금액으로 남아 있으면 뭘 보고 있는지 알 수가 없다.
+const amtCountry = await txt('#cardCountry');
+ok('금액 기준: 가운데가 총 자산 금액', amtCountry.includes('총 자산'), amtCountry.slice(0, 55));
+ok('금액 기준: 열 제목이 현재 비중', amtCountry.includes('현재 비중'));
+ok('금액 기준: 값이 %로 나온다', /\d+\.\d%/.test(amtCountry));
+
+await page.tap('#cardCountry [data-basis="shares"]');
+await wait(300);
+const qtyCountry = await txt('#cardCountry');
+ok('수량 기준: 가운데가 총 보유 주수로 바뀐다',
+  qtyCountry.includes('총 보유') && qtyCountry.includes('주') && !qtyCountry.includes('총 자산'),
+  qtyCountry.slice(0, 70));
+ok('수량 기준: 열 제목이 보유 수량', qtyCountry.includes('보유 수량'), qtyCountry.slice(0, 70));
+ok('수량 기준: 합계도 주 수로 나온다', /합계 [\d,]+주/.test(qtyCountry),
+  qtyCountry.slice(-40));
+const qtySector = await txt('#cardSector');
+ok('섹터 카드도 같이 수량 기준으로 바뀐다', qtySector.includes('보유 수량'), qtySector.slice(0, 70));
+ok('섹터 막대가 살아 있다',
+  await page.evaluate(() => [...document.querySelectorAll('#cardSector .track i')]
+    .some((e) => parseFloat(e.style.width) > 0)));
+
+await page.tap('#cardCountry [data-basis="amount"]');
+await wait(300);
+ok('금액 기준으로 되돌아온다', (await txt('#cardCountry')).includes('총 자산'));
+
+// 목표를 %가 아닌 단위로 걸어도 화면이 안 깨지는지
+g('금액·주수 목표 표시');
+const shown = await page.evaluate(async () => {
+  const ui = await import('./js/ui.js');
+  const { buildPortfolio } = await import('./js/engine.js');
+  const db = JSON.parse(localStorage.getItem('chanhong.portfolio.v1'));
+  db.targets = db.targets || {};
+  db.targets.country = { enabled: true, tolerance: 5, items: {
+    KR: { mode: 'amount', target: 5000000 },
+    US: { mode: 'weight', target: 40 },
+  } };
+  db.targets.sector = { enabled: true, tolerance: 10, items: {
+    반도체: { mode: 'shares', target: 120 },
+  } };
+  const pf = buildPortfolio(db);
+  ui.renderCountryCard(pf, db, 'amount');
+  ui.renderSectorCard(pf, db, 'amount');
+  const bars = [...document.querySelectorAll('#cardSector .track i')].map((e) => e.style.width);
+  return { c: document.querySelector('#cardCountry').textContent.replace(/\s+/g, ' '),
+    s: document.querySelector('#cardSector').textContent.replace(/\s+/g, ' '), bars };
+});
+ok('투자금액 목표는 금액으로 뜬다 (5000000% 아님)',
+  shown.c.includes('5,000,000 KRW') && !shown.c.includes('5000000%'), shown.c.slice(0, 110));
+ok('비중 목표는 그대로 %로 뜬다', shown.c.includes('40%'));
+ok('주수 목표는 주로 뜬다 (120% 아님)',
+  shown.s.includes('120주') && !shown.s.includes('120%'), shown.s.slice(0, 110));
+ok('금액 목표가 섞여도 섹터 막대가 안 짜부라진다',
+  shown.bars.some((w) => parseFloat(w) > 1), shown.bars.join(','));
+await page.reload();
+await wait(1300);
+if (await page.locator('#wcSkip').isVisible().catch(() => false)) { await page.tap('#wcSkip'); await wait(500); }
 
 // ═══════════ 4. 상단 안내
 g('상단 안내');
@@ -320,6 +372,21 @@ ok('첫 탭은 막지 않는다', tap.first === false);
 ok('빠른 두 번째 탭만 막는다', tap.fast === true);
 ok('느린 탭은 막지 않는다', tap.slow === false);
 ok('핀치 중에는 손대지 않는다', tap.pinch === false);
+const swap = await page.evaluate(async () => {
+  // 화면이 다시 그려져서 '같은 자리에 다른 버튼'이 들어온 경우.
+  // 진짜 더블탭이 아니므로 두 번째 탭을 씹으면 안 된다.
+  const fire = (t, x, y) => {
+    const to = new Touch({ identifier: 1, target: t, clientX: x, clientY: y });
+    const ev = new TouchEvent('touchend', { touches: [], changedTouches: [to], bubbles: true, cancelable: true });
+    t.dispatchEvent(ev); return ev.defaultPrevented;
+  };
+  const a = document.querySelector('#btnAdd');
+  const b = document.querySelector('#btnAlerts');
+  fire(a, 200, 100);
+  return { other: fire(b, 202, 101), same: fire(b, 203, 101) };
+});
+ok('같은 자리라도 다른 버튼이면 안 막는다', swap.other === false);
+ok('같은 버튼을 연달아 두드리면 막는다', swap.same === true);
 
 // ═══════════ 14. PWA
 g('PWA');
