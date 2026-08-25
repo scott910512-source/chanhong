@@ -76,11 +76,17 @@ async function doAuth(emailRaw, pw, signingUp) {
     } else {
       await cloud.signIn(email, pw);
     }
-    // 예시 데이터를 아직 손대지 않았다면 계정에 섞지 않고 버린다
-    if (state.db.isSample) {
+    // 이 기기에 남아 있던 데이터가 새 계정으로 딸려 올라가면 안 된다.
+    //   - 예시 데이터는 언제나 버린다
+    //   - 직전에 로그인했던 계정과 다르면(다른 사람이 이 기기를 쓰는 경우)
+    //     이 기기의 사본을 비우고 그 계정 데이터만 받아온다
+    const me = cloud.loadSession()?.userId;
+    const previous = store.sync?.lastUserId;
+    if (state.db.isSample || (previous && me && previous !== me)) {
       await store.clearAll();
       state.db = store.db;
     }
+    store.saveSyncConfig({ lastUserId: me });
     await syncPull({ quiet: true });
     await cloud.push(store.payload()).catch(() => {});
     renderLoginBar();
@@ -931,11 +937,14 @@ function wire() {
       return;
     }
     if (t.closest('#btnCloudOut')) {
-      if (!confirm('로그아웃합니다. 이 기기의 데이터는 그대로 남습니다.')) return;
+      if (!confirm('로그아웃합니다.\n데이터는 계정에 저장돼 있어서 다시 로그인하면 그대로 나옵니다.')) return;
       cloud.clearSession();
       try { localStorage.removeItem(SKIP_KEY); } catch { /* 무시 */ }
-      el('#moreBody').innerHTML = renderSync();
+      el('#moreSheet').hidden = true;
+      state.moreKind = null;
       renderLoginBar();
+      showWelcomeIfNeeded();
+      toast('로그아웃했습니다');
       return;
     }
     if (t.closest('#btnSyncStart')) {

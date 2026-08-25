@@ -66,9 +66,13 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 /* 세그먼트 - 눌린 홈 안에 도드라진 알약 */
 .seg{display:flex;gap:6px;padding:5px;border-radius:16px;box-shadow:var(--press)}
 .seg-item{
-  flex:1;padding:9px 0;font-size:13.5px;font-weight:600;border-radius:12px;color:var(--label2);
+  flex:1;padding:11px 0;font-size:14px;font-weight:700;border-radius:12px;color:var(--label2);
+  transition:color .15s;
 }
-.seg-item.on{background:var(--bg);color:var(--tint);box-shadow:var(--raise-sm)}
+.seg-item.on{
+  background:var(--tint);color:#fff;
+  box-shadow:3px 3px 8px var(--sh-dark), -2px -2px 6px var(--sh-light);
+}
 
 main{max-width:1080px;margin:0 auto;padding:0 0 20px}
 .screen{display:none}
@@ -92,21 +96,41 @@ main{max-width:1080px;margin:0 auto;padding:0 0 20px}
 .status .chev{margin-left:auto;color:var(--label3)}
 
 /* ── 카드/리스트 ── */
+/* 섹션 제목 - 저대비 디자인이라 제목이 약하면 화면이 통째로 뭉개진다.
+   왼쪽 색 막대 + 진한 글자로 경계를 확실히 만든다. */
 .group-title{
-  font-size:12.5px;font-weight:700;color:var(--label2);padding:24px 22px 10px;
-  display:flex;justify-content:space-between;align-items:baseline;letter-spacing:.2px;
+  font-size:15px;font-weight:800;color:var(--label);padding:32px 22px 12px;
+  display:flex;align-items:center;gap:9px;letter-spacing:-.2px;
 }
-.group-title .tail{font-size:12px;color:var(--label3);font-weight:500}
+.group-title::before{
+  content:'';flex:none;width:4px;height:16px;border-radius:2px;
+  background:var(--tint);box-shadow:0 0 0 .5px var(--sh-dark);
+}
+.group-title .tail{
+  margin-left:auto;font-size:12px;color:var(--label3);font-weight:600;letter-spacing:0;
+}
+.group-title.c-country::before{background:var(--s3)}
+.group-title.c-sector::before{background:var(--s2)}
+.group-title.c-more::before{background:var(--label3)}
+.screen>.group-title:first-of-type{padding-top:22px}
 .group-hint{font-size:12.5px;color:var(--label2);padding:10px 22px 0;line-height:1.5}
 .group-foot{padding:18px}
 .foot{font-size:11.5px;color:var(--label3);text-align:center;padding:30px 24px;line-height:1.6}
 
-.group{border-radius:var(--r);margin:0 18px;box-shadow:var(--raise);overflow:hidden}
+.group{
+  border-radius:var(--r);margin:0 18px;overflow:hidden;
+  box-shadow:var(--raise), inset 0 0 0 1px rgba(255,255,255,.4);
+}
+@media (prefers-color-scheme:dark){
+  .group{box-shadow:var(--raise), inset 0 0 0 1px rgba(255,255,255,.045)}
+}
 .row{
   display:flex;align-items:center;gap:12px;width:100%;text-align:left;
   padding:14px 18px;min-height:52px;position:relative;
 }
 .row+.row::before{content:'';position:absolute;left:18px;right:18px;top:0;height:1px;background:var(--sep)}
+.row.tap>span:first-child .main-txt{transition:color .12s}
+.row.tap:hover>span:first-child .main-txt{color:var(--tint)}
 .row.tap:active{box-shadow:var(--press-sm)}
 .row>span:first-child{flex:1;min-width:0}
 .chev{color:var(--label3);font-size:18px;line-height:1}
@@ -132,7 +156,13 @@ main{max-width:1080px;margin:0 auto;padding:0 0 20px}
 .pill.over{color:var(--red)} .pill.under{color:var(--orange)} .pill.ok{color:var(--green)}
 
 /* ── 비중 차트 (최상단) ── */
-.chart{margin:0 18px;padding:18px;border-radius:var(--r);box-shadow:var(--raise)}
+.chart{
+  margin:0 18px;padding:18px;border-radius:var(--r);
+  box-shadow:var(--raise), inset 0 0 0 1px rgba(255,255,255,.4);
+}
+@media (prefers-color-scheme:dark){
+  .chart{box-shadow:var(--raise), inset 0 0 0 1px rgba(255,255,255,.045)}
+}
 .chart-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
 .chart-head h2{font-size:14px;font-weight:700;margin:0}
 .mini-seg{display:flex;gap:4px;padding:4px;border-radius:12px;box-shadow:var(--press-sm)}
@@ -272,7 +302,7 @@ select{text-align-last:right;color:var(--tint);font-weight:600}
   #screen-home{
     display:none;
     grid-template-columns:minmax(300px,.9fr) 1.1fr;
-    gap:0 16px;align-items:start;padding:0 14px;
+    gap:0 34px;align-items:start;padding:0 18px;
   }
   #screen-home.on{display:grid}
   /* 자동 배치에 맡기면 col-b 가 다음 줄로 밀린다. 행까지 못 박는다. */
