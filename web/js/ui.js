@@ -2,7 +2,7 @@
 // 표(table) 를 걷어내고 iOS 설정앱 같은 리스트로 통일했다.
 
 import { num, signed, pct, price, plClass, esc, el, relTime } from './util.js';
-import { ACTION, bandOf, currentValue, formatValue } from './rules.js';
+import { ACTION, bandOf, consolidate, currentValue, formatValue } from './rules.js';
 
 const COUNTRY_FLAG = { KR: '한국', US: '미국', VN: '베트남', JP: '일본', CN: '중국', HK: '홍콩' };
 
@@ -57,11 +57,13 @@ export function renderPositions(pf) {
     <button class="row tap" data-ticker="${esc(p.ticker)}">
       <span>
         <div class="main-txt">${esc(p.asset.name)}</div>
-        <div class="sub-txt">${num(p.quantity, p.quantity % 1 ? 2 : 0)}주 · 비중 ${pct(p.weight, 1)}</div>
+        <div class="sub-txt">${num(p.quantity, p.quantity % 1 ? 2 : 0)}주 ·
+          평단 ${price(p.avgPriceLocal, p.asset.currency)}</div>
       </span>
       <span class="right">
-        <div class="v">${p.hasPrice ? num(p.marketValueBase) : '—'}</div>
-        <div class="s ${plClass(p.returnPct)}">${pct(p.returnPct, 1, true)}</div>
+        <div class="v">${pct(p.weight, 1)}</div>
+        <div class="s">${p.hasPrice ? num(p.marketValueBase) : '—'}
+          <b class="${plClass(p.returnPct)}">${pct(p.returnPct, 1, true)}</b></div>
       </span>
     </button>`).join('');
 }
@@ -108,81 +110,101 @@ export function renderBreakdown(target, pf, db, dim) {
   }).join('');
 }
 
-// ─────────────────────────────── 섹션별 경고
-const DIM_OF = { ticker: ['ticker', 'rule'], country: ['country'], sector: ['sector'] };
+// ─────────────────────────────── 경고 (맨 위에 한 줄씩 작게)
+// 국가·섹터·종목 규칙이 사실상 같은 매매를 가리키는 경우가 많아서,
+// 주문서 합산(consolidate)을 거쳐 종목당 한 줄만 보여준다.
+const MAX_TIPS = 4;
 
-export function renderWarnings(target, pf, signals, kind) {
-  const dims = DIM_OF[kind];
-  const mine = signals.filter((s) => dims.includes(s.dimension));
-  const active = mine.filter((s) => s.status === 'ACTIVE');
-  const bypassed = mine.filter((s) => s.status === 'BYPASSED');
+export function renderTopWarnings(pf, signals, { expanded = false } = {}) {
+  const plan = consolidate(signals, pf);
+  const bypassed = signals.filter((s) => s.status === 'BYPASSED');
+  if (!plan.length && !bypassed.length) { el('#topWarn').innerHTML = ''; return; }
 
-  if (!active.length && !bypassed.length) { el(target).innerHTML = ''; return; }
-
-  const rows = active.map((s) => {
-    const cls = s.action === 'SELL' ? 'sell' : 'buy';
-    const mark = s.action === 'SELL' ? '−' : '+';
-    const who = s.candidates.length && !['ticker', 'rule'].includes(s.dimension)
-      ? ` → ${s.candidates[0]}` : '';
-    const howMuch = `${num(s.amountBase)} ${pf.baseCurrency}`
-      + (s.shares ? ` · 약 ${num(s.shares, 1)}주` : '');
-    return `<div class="warn ${cls}">
-      <span class="mark">${mark}</span>
-      <span>
-        <div class="t">${esc(s.label)}${esc(who)} ${ACTION[s.action]} ${esc(howMuch)}</div>
-        <div class="d">${esc(reasonText(s, pf))}</div>
-      </span>
-    </div>`;
-  }).join('');
-
-  const byLine = bypassed.length
-    ? `<div class="warn"><span class="mark" style="background:var(--label3)">×</span>
-        <span><div class="t">예외 처리 ${bypassed.length}건</div>
-        <div class="d">${esc(bypassed.map((s) => s.label).join(', '))} — 설정 &gt; 예외 처리</div></span></div>`
-    : '';
-
-  el(target).innerHTML = `<div class="warn-group">${rows}${byLine}</div>`;
-}
-
-function reasonText(s, pf) {
-  if (s.reason) return s.reason;
-  const cur = formatValue(s.current, s.mode, pf.baseCurrency);
-  const tgt = s.target === null ? '-' : formatValue(s.target, s.mode, pf.baseCurrency);
-  return `지금 ${cur} → 목표 ${tgt}`;
-}
-
-// ─────────────────────────────── 거래 목록
-export function renderTransactions(db, { search = '' } = {}) {
-  const q = search.trim().toLowerCase();
-  const list = db.transactions
-    .filter((t) => !q || [t.ticker, t.account, t.note, db.assets[t.ticker]?.name]
-      .some((v) => String(v || '').toLowerCase().includes(q)))
-    .slice().reverse();
-
-  el('#txCount').textContent = list.length ? `${list.length}건` : '';
-  if (!list.length) {
-    el('#txList').innerHTML = `<div class="empty">${q ? '검색 결과가 없습니다.'
-      : '거래 내역이 없습니다.<br>아래 <b>거래 추가</b> 를 눌러 시작하세요.'}</div>`;
-    return;
-  }
-  el('#txList').innerHTML = list.map((t) => {
-    const asset = db.assets[t.ticker] || {};
-    const cur = asset.currency || 'USD';
-    const total = t.quantity * t.price + (t.side === 'BUY' ? (t.fee || 0) : -(t.fee || 0));
-    return `<button class="row tap" data-id="${esc(t.id)}">
-      <span>
-        <div class="main-txt">${esc(asset.name || t.ticker)}
-          <span class="${t.side === 'BUY' ? 'up' : 'down'}" style="font-size:13px">
-            ${t.side === 'BUY' ? '매수' : '매도'}</span></div>
-        <div class="sub-txt">${esc(t.date)} · ${num(t.quantity, t.quantity % 1 ? 2 : 0)}주 ×
-          ${price(t.price, cur)}${t.account ? ` · ${esc(t.account)}` : ''}</div>
-      </span>
-      <span class="right">
-        <div class="v">${price(total, cur)}</div>
-        <div class="s mut">${esc(cur)}</div>
-      </span>
+  const shown = expanded ? plan : plan.slice(0, MAX_TIPS);
+  const rows = shown.map((i) => {
+    const sell = i.action === 'SELL';
+    const why = i.reasons[0] ? i.reasons[0].split(' (')[0] : '';
+    const more = i.reasons.length > 1 ? ` 외 ${i.reasons.length - 1}` : '';
+    return `<button class="tip ${sell ? 'sell' : 'buy'}" data-jump="${esc(i.ticker)}">
+      <span class="mk">${sell ? '−' : '+'}</span>
+      <span class="tx"><b>${esc(i.label)}</b> ${ACTION[i.action]}
+        ${num(i.amountBase)}${i.shares ? ` · ${num(i.shares, 1)}주` : ''}</span>
+      <span class="amt">${esc(why + more)}</span>
     </button>`;
   }).join('');
+
+  const rest = plan.length - shown.length;
+  const moreRow = rest > 0
+    ? `<button class="tip mute" data-expand><span class="mk">+</span>
+        <span class="tx">${rest}건 더 보기</span></button>`
+    : '';
+  const byRow = bypassed.length
+    ? `<button class="tip mute" data-jump="bypass"><span class="mk">×</span>
+        <span class="tx">예외 처리 ${bypassed.length}건</span>
+        <span class="amt">${esc(bypassed.slice(0, 2).map((s) => s.label).join(', '))}</span></button>`
+    : '';
+  el('#topWarn').innerHTML = `<div class="tips">${rows}${moreRow}${byRow}</div>`;
+}
+
+// ─────────────────────────────── 관리 화면 (종목별로 접히는 매매 내역)
+export function renderManage(pf, db, { search = '', open = null } = {}) {
+  const q = search.trim().toLowerCase();
+  const rows = pf.positions.filter((p) => !q
+    || [p.asset.name, p.ticker].some((v) => String(v).toLowerCase().includes(q)));
+
+  // 전량 매도해서 보유는 없지만 기록은 남은 종목도 보여준다
+  const held = new Set(pf.positions.map((p) => p.ticker));
+  const closed = [...new Set(db.transactions.map((t) => t.ticker))]
+    .filter((t) => !held.has(t))
+    .filter((t) => !q || String(db.assets[t]?.name || t).toLowerCase().includes(q));
+
+  el('#txCount').textContent = `${rows.length + closed.length}종목 · 거래 ${db.transactions.length}건`;
+  if (!rows.length && !closed.length) {
+    el('#manageList').innerHTML = `<div class="empty">${q ? '검색 결과가 없습니다.'
+      : '아직 종목이 없습니다.<br>아래 <b>+ 새 종목 추가</b> 로 시작하세요.'}</div>`;
+    return;
+  }
+
+  const block = (ticker, name, sub, right) => {
+    const isOpen = open === ticker;
+    const txs = db.transactions.filter((t) => t.ticker === ticker)
+      .slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+    const cur = db.assets[ticker]?.currency || 'USD';
+    return `<button class="stock-head" data-stock="${esc(ticker)}">
+        <span style="flex:1;min-width:0">
+          <div class="main-txt">${esc(name)}</div>
+          <div class="sub-txt">${esc(sub)}</div>
+        </span>
+        <span class="right">${right}</span>
+        <span class="chev">${isOpen ? '⌄' : '›'}</span>
+      </button>
+      ${isOpen ? `<div class="trades">
+        ${txs.map((t) => `<button class="trade" data-id="${esc(t.id)}">
+          <span class="sd ${t.side}">${t.side === 'BUY' ? '매수' : '매도'}</span>
+          <span style="flex:1">${esc(t.date)} · ${num(t.quantity, t.quantity % 1 ? 2 : 0)}주
+            × ${price(t.price, cur)}</span>
+          <span class="mut" style="font-size:12px">수정 ›</span>
+        </button>`).join('') || '<div class="trade mut">매매 내역이 없습니다</div>'}
+        <div class="act-row">
+          <button class="act" data-buy="${esc(ticker)}">+ 매수</button>
+          <button class="act" data-sell="${esc(ticker)}">− 매도</button>
+          <button class="act danger" data-drop="${esc(ticker)}">종목 삭제</button>
+        </div>
+      </div>` : ''}`;
+  };
+
+  el('#manageList').innerHTML = [
+    ...rows.map((p) => block(
+      p.ticker, p.asset.name,
+      `${num(p.quantity, p.quantity % 1 ? 2 : 0)}주 · 평단 ${price(p.avgPriceLocal, p.asset.currency)}`,
+      `<div class="v">${p.hasPrice ? num(p.marketValueBase) : '—'}</div>
+       <div class="s ${plClass(p.returnPct)}">${pct(p.returnPct, 1, true)}</div>`,
+    )),
+    ...closed.map((t) => block(
+      t, db.assets[t]?.name || t, '보유 없음 (기록만 남음)',
+      '<div class="s mut">청산</div>',
+    )),
+  ].join('');
 }
 
 // ─────────────────────────────── 종목 검색 결과

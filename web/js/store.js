@@ -46,6 +46,8 @@ export function emptyDB() {
 // 처음 켰을 때 들어가는 예시 데이터 (삼성/LG/애플/아마존/테슬라/베트남 FPT)
 export function sampleDB() {
   const db = emptyDB();
+  // 로그인했을 때 예시 데이터가 실제 데이터에 섞이지 않도록 표식을 남긴다
+  db.isSample = true;
   db.assets = {
     '005930.KS': { name: '삼성전자', country: 'KR', currency: 'KRW', sector: '반도체', asset_class: '주식', tags: ['대형주', '배당'] },
     '066570.KS': { name: 'LG전자', country: 'KR', currency: 'KRW', sector: '가전/전장', asset_class: '주식', tags: ['대형주', '배당'] },
@@ -287,6 +289,7 @@ export class Store {
 
   // ---- 거래 ----
   addTransaction(tx) {
+    delete this.db.isSample;   // 하나라도 직접 넣으면 더 이상 예시가 아니다
     const row = { ...tx, id: tx.id || uid() };
     this.db.transactions.push(row);
     this.sortTransactions();
@@ -423,6 +426,7 @@ function migrate(db) {
   out.quotes = db.quotes || {};
   out.targets = db.targets || {};
   out.deletedIds = db.deletedIds || [];
+  if (db.isSample) out.isSample = true;
   out.transactions = (db.transactions || []).map((t) => ({
     ...t,
     id: t.id || uid(),

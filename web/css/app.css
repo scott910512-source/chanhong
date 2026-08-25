@@ -121,6 +121,41 @@ main{max-width:640px;margin:0 auto;padding-bottom:20px}
 .pill.under{background:rgba(255,149,0,.16);color:var(--orange)}
 .pill.ok{background:rgba(52,199,89,.15);color:var(--green)}
 
+/* ── 맨 위 경고 줄 ── */
+.tips{margin:10px 16px 0;background:var(--group);border-radius:var(--r);overflow:hidden}
+.tip{
+  display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  padding:8px 13px;position:relative;font-size:13px;
+}
+.tip+.tip::before{content:'';position:absolute;left:13px;right:0;top:0;height:.5px;background:var(--sep)}
+.tip:active{background:var(--fill)}
+.tip .mk{
+  flex:none;width:17px;height:17px;border-radius:50%;color:#fff;font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;background:var(--orange);
+}
+.tip.sell .mk{background:var(--red)} .tip.buy .mk{background:var(--green)}
+.tip.mute .mk{background:var(--label3)}
+.tip .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tip .amt{flex:none;color:var(--label2);font-size:12px}
+
+/* ── 관리 화면 ── */
+.stock-head{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:11px 16px;position:relative}
+.stock-head:active{background:var(--fill)}
+.stock-head+.stock-head::before,.trades+.stock-head::before{
+  content:'';position:absolute;left:16px;right:0;top:0;height:.5px;background:var(--sep)}
+.trades{background:var(--fill)}
+.trade{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:9px 16px 9px 28px;font-size:14px;position:relative;
+}
+.trade+.trade::before{content:'';position:absolute;left:28px;right:0;top:0;height:.5px;background:var(--sep)}
+.trade:active{background:var(--fill)}
+.trade .sd{flex:none;font-size:12px;font-weight:700;width:26px}
+.trade .sd.BUY{color:var(--up)} .trade .sd.SELL{color:var(--down)}
+.act-row{display:flex;gap:8px;padding:10px 16px 12px 28px}
+.act{flex:1;padding:8px;border-radius:8px;background:var(--group);font-size:14px;font-weight:600;color:var(--tint)}
+.act.danger{color:var(--red);flex:none;padding:8px 14px}
+
 /* ── 경고 ── */
 .warn-group{margin:8px 16px 0;background:var(--group);border-radius:var(--r);overflow:hidden}
 .warn{display:flex;gap:11px;padding:12px 16px;position:relative;align-items:flex-start}

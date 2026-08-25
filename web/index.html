@@ -22,12 +22,12 @@
     <h1>찬홍팍</h1>
     <div class="nav-actions">
       <button id="btnInstall" class="btn-plain" hidden>설치</button>
-      <button id="btnAdd" class="btn-add" aria-label="거래 추가">추가</button>
+      <button id="btnAdd" class="btn-add" aria-label="내 주식 관리">내 주식 관리</button>
     </div>
   </div>
   <div class="seg">
     <button class="seg-item on" data-screen="home">현황</button>
-    <button class="seg-item" data-screen="trades">거래</button>
+    <button class="seg-item" data-screen="trades">관리</button>
     <button class="seg-item" data-screen="settings">설정</button>
   </div>
 </header>
@@ -36,19 +36,17 @@
   <!-- ══════════ 현황 ══════════ -->
   <section id="screen-home" class="screen on">
     <div id="summary" class="summary"></div>
+    <div id="topWarn"></div>
     <div id="statusBar"></div>
 
     <p class="group-title">내 종목 <span id="posCount" class="tail"></span></p>
     <div id="listPositions" class="group"></div>
-    <div id="warnTicker"></div>
 
     <p class="group-title">국가별 비중</p>
     <div id="listCountry" class="group"></div>
-    <div id="warnCountry"></div>
 
     <p class="group-title">섹터별 비중</p>
     <div id="listSector" class="group"></div>
-    <div id="warnSector"></div>
 
     <div class="group-foot">
       <button id="btnRefresh" class="btn-plain wide">시세 새로고침</button>
@@ -58,13 +56,15 @@
   <!-- ══════════ 거래 ══════════ -->
   <section id="screen-trades" class="screen">
     <div class="search-wrap">
-      <input id="txSearch" class="search" type="search" placeholder="종목·계좌·메모 검색">
+      <input id="txSearch" class="search" type="search" placeholder="종목 검색">
     </div>
-    <p class="group-title">매매 이력 <span id="txCount" class="tail"></span></p>
-    <div id="txList" class="group"></div>
+    <p class="group-title">내 주식 <span id="txCount" class="tail"></span></p>
+    <div id="manageList" class="group"></div>
     <div class="group-foot">
-      <button id="btnAdd2" class="btn-plain wide">거래 추가</button>
+      <button id="btnAddStock" class="btn-plain wide">+ 새 종목 추가</button>
     </div>
+    <p class="group-hint">종목을 누르면 매매 내역이 펼쳐집니다.
+      거기서 매수·매도를 더 넣거나 고치고 지울 수 있습니다.</p>
   </section>
 
   <!-- ══════════ 설정 ══════════ -->

@@ -30,14 +30,12 @@ function render() {
   recompute();
   const { pf, db } = state;
   ui.renderSummary(pf);
+  ui.renderTopWarnings(pf, state.signals, { expanded: state.tipsExpanded });
   ui.renderStatus(pf, db);
   ui.renderPositions(pf);
-  ui.renderWarnings('#warnTicker', pf, state.signals, 'ticker');
   ui.renderBreakdown('#listCountry', pf, db, 'country');
-  ui.renderWarnings('#warnCountry', pf, state.signals, 'country');
   ui.renderBreakdown('#listSector', pf, db, 'sector');
-  ui.renderWarnings('#warnSector', pf, state.signals, 'sector');
-  ui.renderTransactions(db, { search: el('#txSearch').value });
+  ui.renderManage(pf, db, { search: el('#txSearch').value, open: state.openStock });
   renderAccountList();
   if (state.screen === 'settings') renderSettings();
 }
@@ -77,6 +75,32 @@ function openSheet(txId = null) {
     ui.renderPickResults(searchTickers('', state.db.assets), '');
     setTimeout(() => el('#pickSearch').focus(), 120);
   }
+}
+
+// 관리 화면에서 '이 종목 매수/매도' 로 바로 들어오는 경로
+function openSheetFor(ticker, side) {
+  const a = state.db.assets[ticker] || guessAsset(ticker);
+  state.editingTxId = null;
+  el('#sheetTitle').textContent = side === 'BUY' ? '매수 추가' : '매도 추가';
+  el('#btnDeleteTx').hidden = true;
+  el('#sheet').hidden = false;
+  choose({ ticker, name: a.name || ticker, sector: a.sector, country: a.country,
+    currency: a.currency });
+  el('#txForm').side.value = side;
+  updatePreview();
+}
+
+function dropStock(ticker) {
+  const n = state.db.transactions.filter((t) => t.ticker === ticker).length;
+  const name = state.db.assets[ticker]?.name || ticker;
+  if (!confirm(`${name} 을(를) 매매 내역 ${n}건과 함께 지웁니다. 계속할까요?`)) return;
+  state.db.transactions
+    .filter((t) => t.ticker === ticker)
+    .forEach((t) => store.deleteTransaction(t.id));
+  store.deleteAsset(ticker);
+  state.openStock = null;
+  save();
+  toast(`${name} 삭제했습니다`);
 }
 
 function closeSheet() {
@@ -486,6 +510,7 @@ async function syncPull({ quiet = false } = {}) {
   try {
     const got = await r.pull();
     if (got) {
+      if (store.db.isSample) { await store.clearAll(); state.db = store.db; }
       store.db = { ...sync.merge(store.db, got.data), apiKeys: store.db.apiKeys };
       state.db = store.db;
       await store.save({ snapshot: false });
@@ -676,8 +701,8 @@ function renderAccountList() {
 // ─────────────────────────────── 이벤트
 function wire() {
   els('.seg-item').forEach((t) => t.addEventListener('click', () => showScreen(t.dataset.screen)));
-  el('#btnAdd').addEventListener('click', () => openSheet());
-  el('#btnAdd2').addEventListener('click', () => openSheet());
+  el('#btnAdd').addEventListener('click', () => showScreen('trades'));
+  el('#btnAddStock').addEventListener('click', () => openSheet());
   els('[data-close]').forEach((b) => b.addEventListener('click', closeSheet));
   els('[data-close-more]').forEach((b) => b.addEventListener('click', closeMore));
   el('#btnSaveTx').addEventListener('click', submitTx);
@@ -703,14 +728,49 @@ function wire() {
     const row = e.target.closest('[data-ticker]');
     if (row) editPrice(row.dataset.ticker);
   });
-  el('#txList').addEventListener('click', (e) => {
-    const row = e.target.closest('[data-id]');
-    if (row) openSheet(row.dataset.id);
+  el('#manageList').addEventListener('click', (e) => {
+    const trade = e.target.closest('[data-id]');
+    if (trade) return openSheet(trade.dataset.id);
+
+    const buy = e.target.closest('[data-buy]');
+    if (buy) return openSheetFor(buy.dataset.buy, 'BUY');
+    const sell = e.target.closest('[data-sell]');
+    if (sell) return openSheetFor(sell.dataset.sell, 'SELL');
+
+    const drop = e.target.closest('[data-drop]');
+    if (drop) return dropStock(drop.dataset.drop);
+
+    const head = e.target.closest('[data-stock]');
+    if (head) {
+      state.openStock = state.openStock === head.dataset.stock ? null : head.dataset.stock;
+      ui.renderManage(state.pf, state.db, {
+        search: el('#txSearch').value, open: state.openStock,
+      });
+    }
+    return null;
   });
-  el('#txSearch').addEventListener('input', () => ui.renderTransactions(state.db, {
-    search: el('#txSearch').value,
+  el('#txSearch').addEventListener('input', () => ui.renderManage(state.pf, state.db, {
+    search: el('#txSearch').value, open: state.openStock,
   }));
   el('#btnRefresh').addEventListener('click', (e) => doRefresh(e.currentTarget));
+  el('#topWarn').addEventListener('click', (e) => {
+    if (e.target.closest('[data-expand]')) {
+      state.tipsExpanded = true;
+      ui.renderTopWarnings(state.pf, state.signals, { expanded: true });
+      return;
+    }
+    const jump = e.target.closest('[data-jump]');
+    if (jump && jump.dataset.jump !== 'bypass') {
+      showScreen('trades');
+      state.openStock = jump.dataset.jump;
+      ui.renderManage(state.pf, state.db, {
+        search: el('#txSearch').value, open: state.openStock,
+      });
+    } else if (jump) {
+      showScreen('settings');
+      setTimeout(() => openMore('bypass'), 80);
+    }
+  });
   el('#statusBar').addEventListener('click', (e) => {
     if (e.target.closest('[data-goto-quotes]')) {
       showScreen('settings');
@@ -750,6 +810,11 @@ function wire() {
           if (r.needsConfirm) return toast('메일함에서 인증 링크를 눌러주세요');
         } else {
           await cloud.signIn(email, pw);
+        }
+        // 예시 데이터를 아직 손대지 않았다면 계정에 섞지 않고 버린다
+        if (state.db.isSample) {
+          await store.clearAll();
+          state.db = store.db;
         }
         await syncPull({ quiet: true });
         await cloud.push(store.payload()).catch(() => {});
