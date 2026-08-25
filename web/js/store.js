@@ -9,6 +9,8 @@
 import { uid, today } from './util.js';
 
 const KEY = 'chanhong.portfolio.v1';
+// 동기화 설정(토큰 등)은 절대 동기화 대상 데이터에 섞이면 안 되므로 따로 보관한다
+const SYNC_KEY = 'chanhong.sync';
 const SNAP_KEY = 'chanhong.portfolio.snapshots';
 const MAX_SNAPSHOTS = 5;
 const DB_NAME = 'chanhong-portfolio';
@@ -36,6 +38,7 @@ export function emptyDB() {
     quotes: {},
     fx: { base: 'KRW', rates: { KRW: 1 }, sources: { KRW: 'base' }, asOf: null },
     apiKeys: {},
+    deletedIds: [],   // 지운 거래 기록. 다른 기기에서 되살아나는 걸 막는다
     updatedAt: null,
   };
 }
@@ -180,6 +183,35 @@ export class Store {
     this.listeners = new Set();
     this.persisted = null; // navigator.storage.persist() 결과
     this.lastError = null;
+    this.sync = this.loadSyncConfig();
+  }
+
+  // ---- 동기화 설정 (기기에만 남고 절대 업로드되지 않는다) ----
+  loadSyncConfig() {
+    try {
+      return JSON.parse(localStorage.getItem(SYNC_KEY) || '{}');
+    } catch { return {}; }
+  }
+
+  saveSyncConfig(patch) {
+    this.sync = { ...this.sync, ...patch };
+    try { localStorage.setItem(SYNC_KEY, JSON.stringify(this.sync)); } catch { /* 무시 */ }
+    return this.sync;
+  }
+
+  clearSyncConfig() {
+    this.sync = {};
+    try { localStorage.removeItem(SYNC_KEY); } catch { /* 무시 */ }
+  }
+
+  get syncEnabled() {
+    return Boolean(this.sync?.token && this.sync?.gistId);
+  }
+
+  // 업로드할 알맹이. 토큰 같은 기기 전용 값은 들어가지 않는다.
+  payload() {
+    const { apiKeys, ...rest } = this.db;
+    return rest;
   }
 
   subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
@@ -264,7 +296,10 @@ export class Store {
   updateTransaction(id, patch) {
     const i = this.db.transactions.findIndex((t) => t.id === id);
     if (i < 0) return null;
-    this.db.transactions[i] = { ...this.db.transactions[i], ...patch, id };
+    // 수정 시각을 남겨야 다른 기기의 삭제 기록과 충돌할 때 판단할 수 있다
+    this.db.transactions[i] = {
+      ...this.db.transactions[i], ...patch, id, updatedAt: new Date().toISOString(),
+    };
     this.sortTransactions();
     return this.db.transactions[i];
   }
@@ -272,7 +307,14 @@ export class Store {
   deleteTransaction(id) {
     const before = this.db.transactions.length;
     this.db.transactions = this.db.transactions.filter((t) => t.id !== id);
-    return this.db.transactions.length < before;
+    const removed = this.db.transactions.length < before;
+    if (removed) {
+      this.db.deletedIds = [
+        ...(this.db.deletedIds || []).filter((t) => t.id !== id),
+        { id, at: new Date().toISOString() },
+      ].slice(-200);
+    }
+    return removed;
   }
 
   sortTransactions() {
@@ -380,6 +422,7 @@ function migrate(db) {
   out.assets = db.assets || {};
   out.quotes = db.quotes || {};
   out.targets = db.targets || {};
+  out.deletedIds = db.deletedIds || [];
   out.transactions = (db.transactions || []).map((t) => ({
     ...t,
     id: t.id || uid(),

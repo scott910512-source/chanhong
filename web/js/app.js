@@ -5,6 +5,7 @@ import { buildPortfolio } from './engine.js';
 import { BypassRegistry, evaluate } from './rules.js';
 import { providerStatus, refreshQuotes, fromSiteFile } from './quotes.js';
 import { search as searchTickers, lookup } from './tickers.js';
+import * as sync from './sync.js';
 import * as ui from './ui.js';
 import { el, els, esc, num, parseNum, toast, today, price as fmtPrice } from './util.js';
 
@@ -44,6 +45,7 @@ async function save() {
   const err = await store.save();
   if (err) toast('저장 실패 - 저장공간이 부족할 수 있습니다', 'err');
   render();
+  syncPushSoon();
 }
 
 function showScreen(name) {
@@ -371,6 +373,7 @@ function warnRow(title, desc) {
 
 // ─────────────────────────────── 더보기 시트
 const MORE = {
+  sync: { title: '기기 동기화', body: renderSync },
   rules: { title: '매매 안전장치', body: renderRules },
   bypass: { title: '예외 처리', body: renderBypass },
   assets: { title: '종목 정보', body: renderAssets },
@@ -392,6 +395,81 @@ function closeMore() {
   el('#moreSheet').hidden = true;
   state.moreKind = null;
   save();
+}
+
+function renderSync() {
+  const on = store.syncEnabled;
+  const last = store.sync?.lastSync
+    ? new Date(store.sync.lastSync).toLocaleString('ko-KR') : '아직 없음';
+  return `<p class="group-hint" style="padding-top:14px">
+      폰과 컴퓨터에서 <b>같은 데이터</b>를 보려면 연결하세요.
+      깃허브의 비공개 Gist 한 칸에 데이터를 두고 양쪽이 읽고 씁니다.</p>
+    ${on ? `
+      <div class="group">
+        <div class="row"><span>
+          <div class="main-txt" style="color:var(--green)">연결됨</div>
+          <div class="sub-txt">마지막 동기화 ${esc(last)}</div></span></div>
+        <button class="row tap" id="btnSyncNow"><span>지금 동기화</span><span class="chev">›</span></button>
+        <button class="row tap" id="btnShowCode"><span>다른 기기에 연결할 코드 복사</span><span class="chev">›</span></button>
+        <button class="row tap" id="btnSyncOff"><span style="color:var(--red)">연결 끊기</span></button>
+      </div>
+      <p class="group-hint">다른 기기에서는 이 앱을 열고 <b>설정 &gt; 기기 동기화</b> 에
+        복사한 코드를 붙여넣으면 됩니다.</p>` : `
+      <p class="group-title">이미 연결한 기기가 있다면</p>
+      <div class="group">
+        <label class="row stack">
+          <input id="syncCode" placeholder="연결 코드 붙여넣기" style="text-align:left" autocomplete="off">
+        </label>
+        <button class="row tap" id="btnJoin"><span style="color:var(--tint)">이 코드로 연결</span></button>
+      </div>
+
+      <p class="group-title">처음이라면</p>
+      <div class="group">
+        <label class="row stack">
+          <div class="sub-txt">깃허브 토큰 (gist 권한만 있으면 됩니다)</div>
+          <input id="syncToken" placeholder="ghp_..." style="text-align:left" autocomplete="off">
+        </label>
+        <button class="row tap" id="btnSyncStart"><span style="color:var(--tint)">이 기기 데이터로 시작</span></button>
+      </div>
+      <p class="group-hint">
+        토큰 만드는 곳: github.com → Settings → Developer settings →
+        Personal access tokens → <b>Tokens (classic)</b> → Generate new token →
+        <b>gist</b> 만 체크.<br><br>
+        토큰은 이 기기에만 저장되고 업로드되지 않습니다.
+        비공개 Gist 는 주소를 모르면 찾을 수 없지만 비밀번호가 걸린 건 아니니,
+        주소(연결 코드)를 남에게 주지 마세요.</p>`}`;
+}
+
+let pushTimer = null;
+
+async function syncPull({ quiet = false } = {}) {
+  if (!store.syncEnabled) return;
+  try {
+    const { data } = await sync.pull(store.sync.token, store.sync.gistId);
+    store.db = { ...sync.merge(store.db, data), apiKeys: store.db.apiKeys };
+    state.db = store.db;
+    await store.save({ snapshot: false });
+    store.saveSyncConfig({ lastSync: new Date().toISOString() });
+    render();
+    if (!quiet) toast('동기화 완료');
+  } catch (e) {
+    if (!quiet) toast(`동기화 실패: ${e.message}`, 'err');
+    state.syncError = e.message;
+  }
+}
+
+function syncPushSoon() {
+  if (!store.syncEnabled) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    try {
+      await sync.push(store.sync.token, store.sync.gistId, store.payload());
+      store.saveSyncConfig({ lastSync: new Date().toISOString() });
+      state.syncError = null;
+    } catch (e) {
+      state.syncError = e.message;
+    }
+  }, 2500);
 }
 
 const RULE_FIELDS = [
@@ -615,8 +693,52 @@ function wire() {
     return null;
   });
 
-  el('#moreBody').addEventListener('click', (e) => {
+  el('#moreBody').addEventListener('click', async (e) => {
     const t = e.target;
+
+    if (t.closest('#btnSyncStart')) {
+      const token = el('#syncToken').value.trim();
+      if (!token) return toast('토큰을 넣어주세요', 'err');
+      try {
+        toast('저장소 만드는 중...');
+        const gistId = await sync.createRemote(token, store.payload());
+        store.saveSyncConfig({ token, gistId, lastSync: new Date().toISOString() });
+        el('#moreBody').innerHTML = renderSync();
+        toast('연결됐습니다');
+      } catch (err) { toast(err.message, 'err'); }
+      return;
+    }
+    if (t.closest('#btnJoin')) {
+      try {
+        const { token, gistId } = sync.readCode(el('#syncCode').value);
+        store.saveSyncConfig({ token, gistId });
+        await syncPull();
+        el('#moreBody').innerHTML = renderSync();
+      } catch (err) { toast(err.message, 'err'); }
+      return;
+    }
+    if (t.closest('#btnSyncNow')) {
+      await syncPull();
+      await sync.push(store.sync.token, store.sync.gistId, store.payload())
+        .catch((err) => toast(`업로드 실패: ${err.message}`, 'err'));
+      el('#moreBody').innerHTML = renderSync();
+      return;
+    }
+    if (t.closest('#btnShowCode')) {
+      const code = sync.makeCode(store.sync.token, store.sync.gistId);
+      navigator.clipboard?.writeText(code).then(
+        () => toast('연결 코드를 복사했습니다'),
+        () => prompt('이 코드를 다른 기기에 붙여넣으세요', code),
+      );
+      return;
+    }
+    if (t.closest('#btnSyncOff')) {
+      if (!confirm('이 기기의 연결을 끊습니다. 데이터는 그대로 남습니다.')) return;
+      store.clearSyncConfig();
+      el('#moreBody').innerHTML = renderSync();
+      return;
+    }
+
     if (t.closest('#btnAddBypass')) {
       collectMore();
       state.db.bypass.entries.push({ scope: 'ticker', key: '', reason: '', until: '' });
@@ -713,6 +835,7 @@ async function main() {
   render();
   if (store.isFirstRun) toast('예시 데이터로 시작합니다');
   loadSiteQuotes();
+  if (store.syncEnabled) syncPull({ quiet: true });
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
