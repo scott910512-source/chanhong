@@ -84,7 +84,7 @@ function donut(items, pf) {
   const R = 52;
   const C = 2 * Math.PI * R;
   let off = 0;
-  const arcs = items.map((it, i) => {
+  const arcs = items.filter((it) => it.weight > 0).map((it) => {
     const len = Math.max((it.weight / 100) * C, 1.5);
     const seg = `<circle cx="66" cy="66" r="${R}" fill="none" stroke="${it.color}"
       stroke-width="21" stroke-dasharray="${Math.max(len - 2.5, 1)} ${C - len + 2.5}"
@@ -106,7 +106,7 @@ export function renderSectorCard(pf, db, basis) {
     el('#cardSector').innerHTML = `${head}<div class="empty">종목을 추가하면 보입니다.</div>`;
     return;
   }
-  const max = Math.max(...items.map((i) => i.weight), 1);
+  const max = Math.max(...items.map((i) => Math.max(i.weight, i.target || 0)), 1);
   el('#cardSector').innerHTML = `${head}
     <div class="alloc-h" style="grid-template-columns:70px 1fr auto 22px;display:grid;gap:10px">
       <span>섹터</span><span></span><span style="text-align:right">현재 비중 / 목표</span><span></span>
@@ -138,49 +138,60 @@ function cardHead(title, dim, basis) {
 
 function allocItems(pf, db, dim, basis) {
   const buckets = pf.breakdowns[dim] || [];
-  if (!buckets.length) return [];
   const group = db.targets?.[dim];
+  const targets = group?.items || {};
   const totalQty = buckets.reduce((s, b) => s + (b.quantity || 0), 0);
 
-  const rows = buckets.map((b) => {
-    const weight = basis === 'shares'
-      ? (totalQty ? (b.quantity / totalQty) * 100 : 0)
-      : b.weight;
-    const item = group?.items?.[b.key];
+  const row = (b, key) => {
+    const weight = !b ? 0
+      : (basis === 'shares' ? (totalQty ? (b.quantity / totalQty) * 100 : 0) : b.weight);
+    const item = targets[key];
     const target = (item && item.target !== null && item.target !== undefined && item.target !== '')
       ? Number(item.target) : null;
     let state = '';
     if (target !== null && item) {
       const { lo, hi, mode } = bandOf(item, group.tolerance);
-      // 수량 기준으로 볼 때도 판정은 설정한 기준(보통 비중%)으로 한다
-      const cur = currentValue(b, mode);
+      // 수량 기준으로 볼 때도 판정은 설정에 걸어둔 기준(보통 비중%)으로 한다
+      const cur = b ? currentValue(b, mode) : 0;
       if (hi !== null && cur > hi) state = 'over';
       else if (lo !== null && cur < lo) state = 'under';
       else state = 'ok';
     }
     return {
-      key: b.key,
-      label: dim === 'country' ? (COUNTRY_NAME[b.key] || b.key) : b.key,
-      weight, target, state, value: b.marketValue,
+      key,
+      label: dim === 'country' ? (COUNTRY_NAME[key] || key) : key,
+      weight, target, state, value: b ? b.marketValue : 0, empty: !b,
     };
-  }).sort((a, b) => b.weight - a.weight);
+  };
 
-  const top = rows.slice(0, MAX_SERIES);
-  const rest = rows.slice(MAX_SERIES);
+  const held = buckets.map((b) => row(b, b.key)).sort((a, b) => b.weight - a.weight);
+
+  // 목표는 걸어놨는데 아직 하나도 없는 항목. 이걸 빼면 "미국 0% / 목표 50%" 같은
+  // 제일 중요한 경고가 화면에서 사라진다.
+  const heldKeys = new Set(buckets.map((b) => b.key));
+  const missing = Object.keys(targets)
+    .filter((k) => !heldKeys.has(k))
+    .map((k) => row(null, k))
+    .sort((a, b) => (b.target || 0) - (a.target || 0));
+
+  const top = held.slice(0, MAX_SERIES);
+  const rest = held.slice(MAX_SERIES);
   if (rest.length) {
     top.push({
-      key: '__other', label: `기타 ${rest.length}개`, state: '', target: null,
+      key: '__other', label: `기타 ${rest.length}개`, state: '', target: null, empty: false,
       weight: rest.reduce((s, x) => s + x.weight, 0),
       value: rest.reduce((s, x) => s + x.value, 0),
     });
   }
   top.forEach((it, i) => { it.color = it.key === '__other' ? OTHER : SERIES[i]; });
-  return top;
+  missing.forEach((it) => { it.color = 'transparent'; });
+  return [...top, ...missing];
 }
 
 function allocRow(it) {
   return `<div class="alloc-r">
-    <span class="nm"><i class="sw" style="background:${it.color}"></i><span>${esc(it.label)}</span></span>
+    <span class="nm"><i class="sw${it.empty ? ' none' : ''}" style="background:${it.color}"></i>
+      <span>${esc(it.label)}</span></span>
     <span class="vs">${it.weight.toFixed(1)}% <em>/ ${it.target === null ? '—' : `${it.target}%`}</em></span>
     ${markFor(it)}
   </div>`;

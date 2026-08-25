@@ -9,6 +9,7 @@ import { BypassRegistry, consolidate, evaluate, bandOf } from '../../web/js/rule
 
 function db(overrides = {}) {
   const base = emptyDB();
+  base.targets = {};   // 기본으로 깔리는 국가 목표는 이 테스트들에서 방해가 된다
   base.assets = {
     AAPL: { name: '애플', country: 'US', currency: 'USD', sector: 'IT' },
     '005930.KS': { name: '삼성전자', country: 'KR', currency: 'KRW', sector: '반도체' },
@@ -265,4 +266,40 @@ test('같은 거래를 두 번 넣지 않도록 자연키가 일치한다', () =
   const a = { date: '2024-01-01', ticker: 'AAPL', side: 'BUY', quantity: 10, price: 100, account: '기본' };
   const b = { ...a, id: 'other' };
   assert.equal(naturalKey(a), naturalKey(b));
+});
+
+// ─────────────────────────── 보유가 0인 목표도 경고가 떠야 한다
+test('목표만 있고 하나도 없는 국가는 매수 경고가 뜬다', () => {
+  const d = db();
+  delete d.quotes.AAPL;
+  d.transactions = d.transactions.filter((t) => t.ticker === '005930.KS');
+  d.targets = { country: { enabled: true, tolerance: 5, items: {
+    KR: { mode: 'weight', target: 50 }, US: { mode: 'weight', target: 50 },
+  } } };
+  const pf = buildPortfolio(d);
+  const us = evaluate(pf, d).signals.find((s) => s.key === 'US');
+  assert.equal(us.action, 'BUY');
+  assert.equal(us.status, 'ACTIVE');
+  assert.equal(us.current, 0);
+  assert.ok(us.amountBase > 0);
+});
+
+test('빈 데이터에도 한국·미국 목표가 기본으로 깔려 있다', () => {
+  const base = emptyDB();
+  assert.deepEqual(Object.keys(base.targets.country.items).sort(), ['KR', 'US']);
+  assert.equal(base.targets.country.items.KR.target, 50);
+  assert.equal(base.targets.country.items.US.target, 50);
+});
+
+test('한 종목만 있어도 없는 국가 경고가 살아 있다', () => {
+  const d = emptyDB();                       // 기본 목표(KR/US)를 그대로 쓴다
+  d.assets = { '005930.KS': { name: '삼성전자', country: 'KR', currency: 'KRW', sector: '반도체' } };
+  d.transactions = [{ id: 'a', date: '2026-01-01', ticker: '005930.KS', side: 'BUY',
+    quantity: 1, price: 70000, fee: 0, account: '기본' }];
+  d.quotes = { '005930.KS': { price: 80000, currency: 'KRW' } };
+  d.fx = { base: 'KRW', rates: { KRW: 1 }, sources: {}, asOf: null };
+  const pf = buildPortfolio(d);
+  const { signals } = evaluate(pf, d);
+  assert.equal(signals.find((s) => s.key === 'US').action, 'BUY');
+  assert.equal(signals.find((s) => s.key === 'KR').action, 'SELL');
 });

@@ -8,6 +8,16 @@
 import { DIM_LABELS, MODE_LABELS } from './util.js';
 
 export const STATUS = { ACTIVE: '실행', BYPASSED: '예외', MUTED: '참고', OK: '적정' };
+
+// 아직 하나도 안 가진 국가는 집계에 없어서 이름을 못 찾는다. 그래도 "US" 대신
+// "미국(US)" 로 보여야 경고가 읽힌다.
+const COUNTRY_NAME = { KR: '대한민국', US: '미국', VN: '베트남', JP: '일본',
+  CN: '중국', HK: '홍콩', TW: '대만', DE: '독일', GB: '영국', IN: '인도' };
+
+function labelFor(dim, key) {
+  if (dim === 'country') return `${COUNTRY_NAME[key] || key}(${key})`;
+  return key;
+}
 export const ACTION = { BUY: '매수', SELL: '매도', HOLD: '유지' };
 
 export function dimLabel(dim) { return DIM_LABELS[dim] || dim; }
@@ -111,7 +121,7 @@ export function evaluate(pf, db, bypass = null) {
       const sig = {
         dimension: dim,
         key,
-        label: bucket?.label || key,
+        label: bucket?.label || labelFor(dim, key),
         mode,
         action,
         status: action === 'HOLD' ? 'OK' : 'ACTIVE',
@@ -276,6 +286,8 @@ export function consolidate(signals, pf) {
     const ticker = s.candidateTickers[0] || s.key;
     if (!byTicker.has(ticker)) byTicker.set(ticker, {});
     const slot = byTicker.get(ticker);
+    // 아직 하나도 없는 국가·섹터는 실행할 종목을 못 고른다. 그때는 그 그룹 이름을 쓴다.
+    if (!slot.label && ticker === s.key) slot.label = s.label;
     const tag = `${dimLabel(s.dimension)}:${s.label}${s.reason ? ` (${s.reason.split(' / ')[0]})` : ''}`;
     const cur = slot[s.action] || { amount: 0, reasons: [] };
     slot[s.action] = { amount: Math.max(cur.amount, s.amountBase), reasons: [...cur.reasons, tag] };
@@ -292,6 +304,7 @@ export function consolidate(signals, pf) {
     if (amount < 1) continue;
 
     const pos = pf.positions.find((p) => p.ticker === ticker);
+    const label = pos ? pos.asset.name : (actions.label || ticker);
     let shares = null;
     if (pos?.hasPrice) {
       const priceBase = pos.priceLocal * pos.fx;
@@ -302,7 +315,7 @@ export function consolidate(signals, pf) {
     }
     plan.push({
       ticker,
-      label: pos ? pos.asset.name : ticker,
+      label,
       action,
       amountBase: amount,
       shares,

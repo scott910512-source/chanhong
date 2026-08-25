@@ -101,6 +101,20 @@ function hideWelcome() {
   el('#welcome').hidden = true;
 }
 
+// 아직 하나도 안 가진 국가·섹터에도 목표를 걸 수 있게 한다
+function addTargetKey(dim, message, preset) {
+  const raw = prompt(message, preset);
+  if (raw === null) return;
+  const key = dim === 'country' ? raw.trim().toUpperCase() : raw.trim();
+  if (!key) return;
+  const g = state.db.targets[dim] || { enabled: true, tolerance: 5, items: {} };
+  state.db.targets[dim] = g;
+  if (g.items[key]) { toast(`${key} 은(는) 이미 있습니다`, 'err'); return; }
+  g.items[key] = { mode: 'weight', target: 10 };
+  save();
+  toast(`${key} 추가 - 목표 %를 넣어주세요`);
+}
+
 function openLogin() {
   showScreen('settings');
   setTimeout(() => openMore('sync'), 80);
@@ -342,9 +356,11 @@ function renderSettings() {
 function renderTargetList(target, dim) {
   const group = state.db.targets[dim] || { enabled: true, tolerance: 5, items: {} };
   state.db.targets[dim] = group;
-  // 비중이 큰 것부터 (보유하지 않은 목표는 뒤로)
+  // 보유한 것부터, 목표만 걸어둔 것(아직 0%)은 뒤에
   const buckets = state.pf?.breakdowns?.[dim] || [];
-  const keys = [...new Set([...buckets.map((b) => b.key), ...Object.keys(group.items || {})])];
+  const heldKeys = buckets.map((b) => b.key);
+  const targetOnly = Object.keys(group.items || {}).filter((k) => !heldKeys.includes(k));
+  const keys = [...heldKeys, ...targetOnly];
   if (!keys.length) {
     el(target).innerHTML = '<div class="empty">보유 종목이 생기면 여기에 나타납니다.</div>';
     return;
@@ -833,6 +849,10 @@ function wire() {
   els('.tabbar button').forEach((t) => t.addEventListener('click', () => showScreen(t.dataset.screen)));
   el('#btnAdd').addEventListener('click', () => showScreen('trades'));
   el('#btnExcel').addEventListener('click', downloadExcel);
+  el('#btnAddCountry').addEventListener('click', () => addTargetKey('country',
+    '국가 코드를 넣으세요 (KR 한국 · US 미국 · VN 베트남 · JP 일본 · CN 중국)', 'US'));
+  el('#btnAddSector').addEventListener('click', () => addTargetKey('sector',
+    '섹터 이름을 넣으세요 (예: 반도체, 금융, 바이오/제약)', ''));
   el('#btnLogin').addEventListener('click', openLogin);
   el('#wcSignIn').addEventListener('click', () => doAuth(el('#wcEmail').value, el('#wcPw').value, false));
   el('#wcSignUp').addEventListener('click', () => doAuth(el('#wcEmail').value, el('#wcPw').value, true));

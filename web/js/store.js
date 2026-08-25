@@ -25,7 +25,18 @@ export function emptyDB() {
     baseCurrency: 'KRW',
     assets: {},
     transactions: [],
-    targets: {},
+    // 한국·미국은 기본으로 깔아둔다. 목표만 있고 보유가 0이어도 경고가 떠야
+    // "미국 주식이 하나도 없다" 를 알 수 있다.
+    targets: {
+      country: {
+        enabled: true,
+        tolerance: 5,
+        items: {
+          KR: { mode: 'weight', target: 50 },
+          US: { mode: 'weight', target: 50 },
+        },
+      },
+    },
     rules: {
       cash: 0,
       max_position_weight: null,

@@ -140,6 +140,7 @@ main{max-width:1240px;margin:0 auto}
 .alloc-r:first-of-type{border-top:0}
 .alloc .nm{display:flex;align-items:center;gap:7px;min-width:0}
 .alloc .sw{width:9px;height:9px;border-radius:3px;flex:none}
+.alloc .sw.none{background:transparent;border:1.5px dashed var(--label3)}
 .alloc .nm span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
 .alloc .vs{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
 .alloc .vs em{font-style:normal;color:var(--label3);font-weight:500}
