@@ -24,6 +24,28 @@ async function getJSON(url, { timeout = TIMEOUT } = {}) {
   }
 }
 
+// ---------------------------------------------------------------- 사이트 자동수집 파일
+// 깃허브 액션이 야후에서 받아 web/quotes.json 으로 올려둔 값.
+// 앱과 같은 주소라서 CORS 문제도, API 키도 없다. 폰에서 제일 먼저 시도한다.
+export async function fromSiteFile() {
+  const res = await fetch(`./quotes.json?t=${Date.now()}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`quotes.json 없음 (HTTP ${res.status})`);
+  const d = await res.json();
+  const quotes = {};
+  for (const [ticker, q] of Object.entries(d.quotes || {})) {
+    if (!Number.isFinite(q.price)) continue;
+    quotes[ticker] = {
+      price: q.price,
+      previousClose: Number.isFinite(q.previousClose) ? q.previousClose : null,
+      currency: q.currency,
+      source: q.source || '자동수집',
+      asOf: q.asOf || d.generatedAt || new Date().toISOString(),
+      stale: false,
+    };
+  }
+  return { quotes, fx: d.fx || null, generatedAt: d.generatedAt };
+}
+
 // ---------------------------------------------------------------- 로컬 서버
 export async function detectServer() {
   // 로컬 서버는 집 안에서만 의미가 있다. 깃허브 페이지 같은 곳에서 매번 404 를
@@ -214,11 +236,30 @@ export async function refreshQuotes(db, { onProgress = () => {} } = {}) {
   const keys = db.apiKeys || {};
   const quotes = {};
 
-  // 1) 로컬 서버가 있으면 그쪽이 제일 정확하다
+  // 1) 깃허브 액션이 올려둔 자동수집 파일 (야후 시세, 키 불필요)
+  let siteFx = null;
+  try {
+    const site = await fromSiteFile();
+    for (const t of tickers) {
+      if (site.quotes[t]) { quotes[t] = site.quotes[t]; }
+    }
+    siteFx = site.fx;
+    const n = Object.keys(quotes).length;
+    log.push(n ? `자동수집 파일에서 ${n}건 (${site.generatedAt || ''})`
+      : '자동수집 파일에 내 종목이 없음 - watchlist.json 확인 필요');
+  } catch (e) {
+    log.push(`자동수집 파일 없음: ${e.message}`);
+  }
+  const remaining = tickers.filter((t) => !quotes[t]);
+  if (!remaining.length && siteFx?.rates) {
+    return { quotes, fx: { rates: siteFx.rates, sources: siteFx.sources || {} }, log };
+  }
+
+  // 2) 로컬 서버가 있으면 그쪽이 제일 정확하다
   if (await detectServer()) {
     try {
       onProgress('로컬 서버에서 받는 중...');
-      const r = await fromServer(tickers);
+      const r = await fromServer(remaining);
       Object.assign(quotes, r.quotes);
       log.push(`로컬 서버에서 ${Object.keys(r.quotes).length}건`);
       const fx = r.fx ? { rates: r.fx, sources: {} } : await fetchFx(db.baseCurrency, tickers.map((t) => assets[t]?.currency), log);
@@ -228,11 +269,11 @@ export async function refreshQuotes(db, { onProgress = () => {} } = {}) {
     }
   }
 
-  // 2) 브라우저에서 직접 (CORS 되는 것만)
+  // 3) 브라우저에서 직접 (CORS 되는 것만)
   let done = 0;
-  for (const ticker of tickers) {
+  for (const ticker of tickers.filter((t) => !quotes[t])) {
     const asset = { currency: 'USD', country: 'US', ...assets[ticker] };
-    onProgress(`${ticker} (${++done}/${tickers.length})`);
+    onProgress(`${ticker} (${++done}/${remaining.length})`);
     let got = null;
     for (const p of PROVIDERS) {
       if (p.needsKey && !keys[p.needsKey]) continue;
@@ -252,6 +293,8 @@ export async function refreshQuotes(db, { onProgress = () => {} } = {}) {
 
   onProgress('환율 받는 중...');
   const currencies = tickers.map((t) => (assets[t]?.currency || 'USD'));
-  const fx = await fetchFx(db.baseCurrency, currencies, log);
+  const fx = siteFx?.rates
+    ? { rates: siteFx.rates, sources: siteFx.sources || {} }
+    : await fetchFx(db.baseCurrency, currencies, log);
   return { quotes, fx, log };
 }

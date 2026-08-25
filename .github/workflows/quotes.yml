@@ -1,0 +1,47 @@
+# 야후에서 시세를 받아 web/quotes.json 으로 커밋한다.
+# 폰 브라우저는 CORS 때문에 야후를 직접 못 부르므로, 액션이 대신 받아서
+# 앱과 같은 주소에 파일로 올려두면 앱이 그냥 읽어간다. (키 불필요)
+#
+# 받아올 종목은 web/watchlist.json 에서 관리합니다.
+name: 시세 자동수집
+
+on:
+  schedule:
+    # 국내장(09:00~15:30 KST = 00:00~06:30 UTC) 30분마다
+    - cron: '0,30 0-7 * * 1-5'
+    # 미국장(09:30~16:00 ET ≈ 14:30~21:00 UTC) 30분마다
+    - cron: '0,30 14-21 * * 1-5'
+  workflow_dispatch:
+  push:
+    paths: ['web/watchlist.json', 'tools/fetch_quotes.py']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: quotes
+  cancel-in-progress: true
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 시세 받기
+        run: python tools/fetch_quotes.py
+
+      - name: 바뀐 게 있으면 커밋
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- web/quotes.json; then
+            echo "시세 변동 없음 - 커밋 생략"
+          else
+            git add web/quotes.json
+            git commit -m "시세 자동수집 $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git push
+          fi

@@ -1,288 +1,207 @@
 // 화면 그리기. 상태 변경은 app.js 가 하고 여기서는 DOM 만 만든다.
+// 표(table) 를 걷어내고 iOS 설정앱 같은 리스트로 통일했다.
 
-import {
-  num, signed, pct, price, plClass, esc, el, relTime, countryLabel, DIM_LABELS,
-} from './util.js';
-import { ACTION, STATUS, bandOf, consolidate, currentValue, dimLabel, formatValue } from './rules.js';
+import { num, signed, pct, price, plClass, esc, el, relTime } from './util.js';
+import { ACTION, bandOf, currentValue, formatValue } from './rules.js';
 
-export const DIM_ORDER = ['country', 'sector', 'ticker', 'currency', 'account', 'tag', 'asset_class'];
+const COUNTRY_FLAG = { KR: '한국', US: '미국', VN: '베트남', JP: '일본', CN: '중국', HK: '홍콩' };
 
-// ---------------------------------------------------------------- 상단 요약
-export function renderKpis(pf) {
-  const cur = pf.baseCurrency;
-  const cards = [
-    { k: '총 평가금액', v: `${num(pf.totalValue)}`, x: cur },
-    {
-      k: '평가손익', v: signed(pf.unrealizedPl), cls: plClass(pf.unrealizedPl),
-      x: pct(pf.returnPct, 2, true),
-    },
-    { k: '당일손익', v: signed(pf.dayPl), cls: plClass(pf.dayPl), x: '전일 종가 대비' },
-    {
-      k: '매입금액', v: num(pf.totalCost), x: pf.cash ? `예수금 ${num(pf.cash)}` : `${pf.positions.length}종목`,
-    },
-  ];
-  el('#kpis').innerHTML = cards.map((c) => `
-    <div class="kpi">
-      <div class="k">${esc(c.k)}</div>
-      <div class="v ${c.cls || ''}">${c.v}</div>
-      <div class="x">${esc(c.x || '')}</div>
-    </div>`).join('');
+// ─────────────────────────────── 맨 위 요약 (한두 줄)
+export function renderSummary(pf) {
+  const pl = pf.unrealizedPl;
+  el('#summary').innerHTML = `
+    <div class="big">${num(pf.totalValue)}<span class="cur">${esc(pf.baseCurrency)}</span></div>
+    <div class="sub">
+      <b class="${plClass(pl)}">${signed(pl)} (${pct(pf.returnPct, 1, true)})</b>
+      · 오늘 <b class="${plClass(pf.dayPl)}">${signed(pf.dayPl)}</b>
+    </div>`;
 }
 
-// ---------------------------------------------------------------- 보유 종목
-export function renderPositions(pf) {
-  const cur = pf.baseCurrency;
+// 시세 상태 한 줄 (탭하면 설정으로)
+export function renderStatus(pf, db) {
+  const fake = pf.positions.filter((p) => p.quote?.stale).length;
+  const missing = pf.missingPrices.length;
+  const fakeFx = [...new Set(pf.positions.map((p) => p.asset.currency))]
+    .filter((c) => c !== pf.baseCurrency && (db.fx?.sources?.[c] || '') === '예시값');
+  const newest = Object.values(db.quotes || {}).map((q) => q.asOf).filter(Boolean).sort().pop();
+
+  let cls = '';
+  let text;
   if (!pf.positions.length) {
-    el('#tblPositions').innerHTML = `<tbody><tr><td class="empty">
-      아직 보유 종목이 없습니다.<br>오른쪽 위 <b>+ 추가</b> 로 매수 내역을 넣어보세요.
-    </td></tr></tbody>`;
+    text = '종목을 추가하면 여기에 시세 상태가 표시됩니다';
+  } else if (fake || missing || fakeFx.length) {
+    cls = 'warn';
+    const bits = [];
+    if (fake) bits.push(`${fake}종목 예시 시세`);
+    if (missing) bits.push(`${missing}종목 시세 없음`);
+    if (fakeFx.length) bits.push('환율 예시값');
+    text = `${bits.join(' · ')} — 실제 값이 아닙니다`;
+  } else {
+    text = `시세 ${relTime(newest)} 기준`;
+  }
+  el('#statusBar').innerHTML =
+    `<button class="status ${cls}" data-goto-quotes>
+       <span class="dot"></span><span>${esc(text)}</span><span class="chev">›</span>
+     </button>`;
+}
+
+// ─────────────────────────────── 내 종목
+export function renderPositions(pf) {
+  el('#posCount').textContent = pf.positions.length ? `${pf.positions.length}종목` : '';
+  if (!pf.positions.length) {
+    el('#listPositions').innerHTML =
+      `<div class="empty">아직 종목이 없습니다.<br>오른쪽 위 <b>추가</b> 를 눌러 시작하세요.</div>`;
     return;
   }
-  const head = `<thead><tr>
-    <th class="l">종목</th><th>비중</th><th>수익률</th><th>주수</th><th>평단</th>
-    <th>현재가</th><th>등락</th><th>평가액(${esc(cur)})</th><th>손익</th>
-  </tr></thead>`;
-  const rows = pf.positions.map((p) => `
-    <tr data-ticker="${esc(p.ticker)}">
-      <td class="l">
-        <span class="name">${esc(p.asset.name)}</span>
-        <span class="tick">${esc(p.ticker)} · ${esc(p.asset.country)} · ${esc(p.asset.sector)}</span>
-      </td>
-      <td><b>${pct(p.weight, 1)}</b></td>
-      <td class="${plClass(p.returnPct)}">${pct(p.returnPct, 1, true)}</td>
-      <td>${num(p.quantity, p.quantity % 1 ? 2 : 0)}</td>
-      <td>${price(p.avgPriceLocal, p.asset.currency)}</td>
-      <td><span class="editable" data-edit-price="${esc(p.ticker)}">${price(p.priceLocal, p.asset.currency)}</span></td>
-      <td class="${plClass(p.dayChangePct)}">${pct(p.dayChangePct, 2, true)}</td>
-      <td>${num(p.marketValueBase)}</td>
-      <td class="${plClass(p.unrealizedPlBase)}">${signed(p.unrealizedPlBase)}</td>
-    </tr>`).join('');
-
-  const foot = `<tfoot><tr>
-    <td class="l mut">합계 ${pf.positions.length}종목</td>
-    <td><b>100%</b></td>
-    <td class="${plClass(pf.returnPct)}"><b>${pct(pf.returnPct, 1, true)}</b></td>
-    <td></td><td></td><td></td><td></td>
-    <td><b>${num(pf.totalValue)}</b></td>
-    <td class="${plClass(pf.unrealizedPl)}"><b>${signed(pf.unrealizedPl)}</b></td>
-  </tr></tfoot>`;
-  el('#tblPositions').innerHTML = `${head}<tbody>${rows}</tbody>${foot}`;
+  el('#listPositions').innerHTML = pf.positions.map((p) => `
+    <button class="row tap" data-ticker="${esc(p.ticker)}">
+      <span>
+        <div class="main-txt">${esc(p.asset.name)}</div>
+        <div class="sub-txt">${num(p.quantity, p.quantity % 1 ? 2 : 0)}주 · 비중 ${pct(p.weight, 1)}</div>
+      </span>
+      <span class="right">
+        <div class="v">${p.hasPrice ? num(p.marketValueBase) : '—'}</div>
+        <div class="s ${plClass(p.returnPct)}">${pct(p.returnPct, 1, true)}</div>
+      </span>
+    </button>`).join('');
 }
 
-// ---------------------------------------------------------------- 관리 현황
-export function renderDimChips(pf, db, active) {
-  el('#dimChips').innerHTML = DIM_ORDER.map((d) => {
-    const n = (pf.breakdowns[d] || []).length;
-    const targeted = Object.keys(db.targets?.[d]?.items || {}).length;
-    return `<button class="chip ${d === active ? 'active' : ''}" data-dim="${d}">
-      ${esc(DIM_LABELS[d])}<span class="n">${n}${targeted ? `·목표${targeted}` : ''}</span>
-    </button>`;
-  }).join('');
-}
-
-export function renderBreakdown(pf, db, dim) {
+// ─────────────────────────────── 국가별 / 섹터별 비중
+export function renderBreakdown(target, pf, db, dim) {
   const buckets = pf.breakdowns[dim] || [];
   const group = db.targets?.[dim];
-  const cur = pf.baseCurrency;
-
   if (!buckets.length) {
-    el('#tblBreakdown').innerHTML = `<tbody><tr><td class="empty">표시할 항목이 없습니다.</td></tr></tbody>`;
-    el('#dimHint').textContent = '';
+    el(target).innerHTML = '<div class="empty">표시할 항목이 없습니다.</div>';
     return;
   }
-
-  const head = `<thead><tr>
-    <th class="l">${esc(DIM_LABELS[dim])}</th><th class="c">판정</th>
-    <th>현재</th><th>목표</th><th class="l">비중</th>
-    <th>평가액(${esc(cur)})</th><th>손익</th>
-  </tr></thead>`;
-
-  const rows = buckets.map((b) => {
+  el(target).innerHTML = buckets.map((b) => {
     const item = group?.items?.[b.key];
-    let targetTxt = '-'; let currentTxt = pct(b.weight, 1); let verdict = '<span class="tag">목표없음</span>';
-    let barCls = ''; let marker = ''; let band = '';
+    let pill = '';
+    let barCls = '';
+    let marker = '';
+    let sub = '';
 
-    if (item) {
+    if (item && item.target !== null && item.target !== undefined && item.target !== '') {
       const { lo, hi, mode, target } = bandOf(item, group.tolerance);
-      const current = currentValue(b, mode);
-      targetTxt = formatValue(target, mode, cur);
-      currentTxt = formatValue(current, mode, cur);
-      if (hi !== null && current > hi) { verdict = '<span class="tag over">비중 많음</span>'; barCls = 'over'; }
-      else if (lo !== null && current < lo) { verdict = '<span class="tag under">비중 적음</span>'; barCls = 'under'; }
-      else verdict = '<span class="tag ok">적정</span>';
-
-      if (mode === 'weight' && target !== null) {
-        marker = `<u style="left:${Math.min(target, 100).toFixed(1)}%"></u>`;
-        if (lo !== null && hi !== null) {
-          marker += `<s style="left:${Math.min(lo, 100).toFixed(1)}%;width:${Math.max(0, Math.min(hi, 100) - Math.min(lo, 100)).toFixed(1)}%"></s>`;
-        }
-        band = `${lo.toFixed(0)}~${hi.toFixed(0)}%`;
-      } else if (lo !== null && hi !== null) {
-        band = `${formatValue(lo, mode, cur)} ~ ${formatValue(hi, mode, cur)}`;
-      }
+      const cur = currentValue(b, mode);
+      if (hi !== null && cur > hi) { pill = '<span class="pill over">많음</span>'; barCls = 'over'; }
+      else if (lo !== null && cur < lo) { pill = '<span class="pill under">적음</span>'; barCls = 'under'; }
+      else pill = '<span class="pill ok">적정</span>';
+      sub = `목표 ${formatValue(target, mode, pf.baseCurrency)}`;
+      if (mode === 'weight') marker = `<u style="left:${Math.min(target, 100).toFixed(1)}%"></u>`;
+    } else {
+      sub = '목표 미설정';
     }
 
-    return `<tr>
-      <td class="l"><span class="name">${esc(b.label)}</span>
-        ${band ? `<span class="tick">허용 ${esc(band)}</span>` : ''}</td>
-      <td class="c">${verdict}</td>
-      <td><b>${esc(currentTxt)}</b></td>
-      <td>${esc(targetTxt)}</td>
-      <td class="l"><div class="bar"><i class="${barCls}" style="width:${Math.min(b.weight, 100).toFixed(1)}%"></i>${marker}</div></td>
-      <td>${num(b.marketValue)}</td>
-      <td class="${plClass(b.unrealizedPl)}">${signed(b.unrealizedPl)}</td>
-    </tr>`;
-  }).join('');
-
-  el('#tblBreakdown').innerHTML = `${head}<tbody>${rows}</tbody>`;
-  const targeted = Object.keys(group?.items || {}).length;
-  el('#dimHint').textContent = targeted
-    ? `목표 ${targeted}개 설정됨. 허용 범위를 벗어나면 아래 매매 안내에 나옵니다.`
-    : `${DIM_LABELS[dim]} 목표가 아직 없습니다. 설정 탭에서 목표를 걸면 여기서 판정이 나옵니다.`;
-}
-
-// ---------------------------------------------------------------- 매매 안내
-export function renderPlan(pf, signals) {
-  const plan = consolidate(signals, pf);
-  const box = el('#plan');
-  if (!plan.length) {
-    box.innerHTML = `<div class="plan-item none">
-      <div><b>지금 할 매매 없음</b>
-      <div class="why">설정한 목표 범위 안에 다 들어와 있습니다.</div></div></div>`;
-    return;
-  }
-  box.innerHTML = plan.map((i) => {
-    const cls = i.action === 'SELL' ? 'over' : 'under';
-    return `<div class="plan-item">
-      <span class="tag ${cls}">${ACTION[i.action]}</span>
-      <div style="flex:1;min-width:0">
-        <div><b>${esc(i.label)}</b>
-          <span class="amt"> ${num(i.amountBase)} ${esc(pf.baseCurrency)}</span>
-          ${i.shares ? `<span class="mut"> · 약 ${num(i.shares, 1)}주</span>` : ''}
-          ${i.netted ? '<span class="mut"> · 매수·매도 상계</span>' : ''}
-        </div>
-        <div class="why">근거: ${esc(i.reasons.join(' | '))}</div>
-      </div>
+    const label = dim === 'country' ? (COUNTRY_FLAG[b.key] || b.key) : b.key;
+    return `<div class="row">
+      <span>
+        <div class="main-txt">${esc(label)}</div>
+        <div class="sub-txt">${esc(sub)} · ${num(b.marketValue)}</div>
+        <div class="bar"><i class="${barCls}" style="width:${Math.min(b.weight, 100).toFixed(1)}%"></i>${marker}</div>
+      </span>
+      <span class="right">
+        <div class="v">${pct(b.weight, 1)}</div>
+        <div class="s">${pill}</div>
+      </span>
     </div>`;
   }).join('');
 }
 
-export function renderSignals(pf, signals) {
-  const cur = pf.baseCurrency;
-  const shown = signals.filter((s) => s.status !== 'OK');
-  if (!shown.length) {
-    el('#tblSignals').innerHTML = '<tbody><tr><td class="empty">전부 적정 범위입니다.</td></tr></tbody>';
-    return;
-  }
-  const head = `<thead><tr>
-    <th class="c">상태</th><th class="c">구분</th><th class="l">대상</th><th class="c">액션</th>
-    <th>현재</th><th>목표</th><th>금액(${esc(cur)})</th><th>주수</th><th class="l">사유</th>
-  </tr></thead>`;
-  const rows = shown.map((s) => {
-    let detail = s.reason;
-    if (s.candidates.length && s.status === 'ACTIVE' && !['ticker', 'rule'].includes(s.dimension)) {
-      detail = `${detail ? `${detail} / ` : ''}후보: ${s.candidates.join(', ')}`;
-    }
-    return `<tr class="${s.status === 'BYPASSED' ? 'mut' : ''}">
-      <td class="c"><span class="tag ${s.status === 'BYPASSED' ? 'by' : ''}">${STATUS[s.status]}</span></td>
-      <td class="c">${esc(dimLabel(s.dimension))}</td>
-      <td class="l">${esc(s.label)}</td>
-      <td class="c">${ACTION[s.action]}</td>
-      <td>${esc(formatValue(s.current, s.mode, cur))}</td>
-      <td>${s.target === null ? '-' : esc(formatValue(s.target, s.mode, cur))}</td>
-      <td>${s.amountBase ? num(s.amountBase) : '-'}</td>
-      <td>${s.shares ? num(s.shares, 1) : '-'}</td>
-      <td class="l mut">${esc(detail || '-')}</td>
-    </tr>`;
+// ─────────────────────────────── 섹션별 경고
+const DIM_OF = { ticker: ['ticker', 'rule'], country: ['country'], sector: ['sector'] };
+
+export function renderWarnings(target, pf, signals, kind) {
+  const dims = DIM_OF[kind];
+  const mine = signals.filter((s) => dims.includes(s.dimension));
+  const active = mine.filter((s) => s.status === 'ACTIVE');
+  const bypassed = mine.filter((s) => s.status === 'BYPASSED');
+
+  if (!active.length && !bypassed.length) { el(target).innerHTML = ''; return; }
+
+  const rows = active.map((s) => {
+    const cls = s.action === 'SELL' ? 'sell' : 'buy';
+    const mark = s.action === 'SELL' ? '−' : '+';
+    const who = s.candidates.length && !['ticker', 'rule'].includes(s.dimension)
+      ? ` → ${s.candidates[0]}` : '';
+    const howMuch = `${num(s.amountBase)} ${pf.baseCurrency}`
+      + (s.shares ? ` · 약 ${num(s.shares, 1)}주` : '');
+    return `<div class="warn ${cls}">
+      <span class="mark">${mark}</span>
+      <span>
+        <div class="t">${esc(s.label)}${esc(who)} ${ACTION[s.action]} ${esc(howMuch)}</div>
+        <div class="d">${esc(reasonText(s, pf))}</div>
+      </span>
+    </div>`;
   }).join('');
-  el('#tblSignals').innerHTML = `${head}<tbody>${rows}</tbody>`;
+
+  const byLine = bypassed.length
+    ? `<div class="warn"><span class="mark" style="background:var(--label3)">×</span>
+        <span><div class="t">예외 처리 ${bypassed.length}건</div>
+        <div class="d">${esc(bypassed.map((s) => s.label).join(', '))} — 설정 &gt; 예외 처리</div></span></div>`
+    : '';
+
+  el(target).innerHTML = `<div class="warn-group">${rows}${byLine}</div>`;
 }
 
-// ---------------------------------------------------------------- 경고 배너
-export function renderAlerts(pf, db, extra = []) {
-  const items = [...extra];
-  if (pf.missingPrices.length) {
-    items.push({
-      kind: 'warn',
-      html: `<b>현재가가 없는 종목:</b> ${esc(pf.missingPrices.join(', '))} — 
-             보유 현황 표에서 현재가를 눌러 직접 넣거나, 시세 새로고침을 하세요.
-             (이 종목들은 비중 계산에서 빠집니다)`,
-    });
-  }
-  if (pf.missingFx.length) {
-    items.push({
-      kind: 'warn',
-      html: `<b>환율이 없는 통화:</b> ${esc(pf.missingFx.join(', '))} — 설정 탭 &gt; 환율에서 직접 넣어주세요.`,
-    });
-  }
-  if (pf.errors.length) {
-    items.push({ kind: 'warn', html: `<b>거래내역 확인 필요:</b> ${esc(pf.errors.join(' / '))}` });
-  }
-  const stale = pf.positions.filter((p) => p.quote?.stale).map((p) => p.ticker);
-  if (stale.length) {
-    items.push({
-      kind: 'warn',
-      html: `<b>현재가가 실제 시세가 아닙니다:</b> ${esc(stale.join(', '))} —
-             처음 깔 때 넣어둔 <b>예시 숫자</b>로 계산 중이라 평가금액·손익·비중이 전부 가짜입니다.
-             보유 현황의 현재가를 눌러 직접 고치거나, <b>시세 새로고침</b>을 누르세요.`,
-    });
-  }
-
-  // 환율도 예시값이면 원화 환산이 전부 틀어진다. 시세와 별개로 알려준다.
-  const usedCurrencies = [...new Set(pf.positions.map((p) => p.asset.currency))]
-    .filter((c) => c !== pf.baseCurrency);
-  const fakeFx = usedCurrencies.filter((c) => (db.fx?.sources?.[c] || '') === '예시값');
-  if (fakeFx.length) {
-    const shown = fakeFx.map((c) => `1 ${c} = ${num(db.fx.rates[c], db.fx.rates[c] < 10 ? 4 : 0)} ${pf.baseCurrency}`);
-    items.push({
-      kind: 'warn',
-      html: `<b>환율도 예시값입니다:</b> ${esc(shown.join(' · '))} —
-             <b>시세 새로고침</b>을 누르면 환율은 API 키 없이도 실제 값으로 바뀝니다.
-             (설정 탭 &gt; 환율에서 직접 넣어도 됩니다)`,
-    });
-  }
-  el('#alerts').innerHTML = items
-    .map((i) => `<div class="alert ${i.kind === 'info' ? 'info' : ''}">${i.html}</div>`).join('');
+function reasonText(s, pf) {
+  if (s.reason) return s.reason;
+  const cur = formatValue(s.current, s.mode, pf.baseCurrency);
+  const tgt = s.target === null ? '-' : formatValue(s.target, s.mode, pf.baseCurrency);
+  return `지금 ${cur} → 목표 ${tgt}`;
 }
 
-// ---------------------------------------------------------------- 거래 목록
-export function renderTransactions(db, { search = '', ticker = '' } = {}) {
+// ─────────────────────────────── 거래 목록
+export function renderTransactions(db, { search = '' } = {}) {
   const q = search.trim().toLowerCase();
   const list = db.transactions
-    .filter((t) => (!ticker || t.ticker === ticker))
     .filter((t) => !q || [t.ticker, t.account, t.note, db.assets[t.ticker]?.name]
       .some((v) => String(v || '').toLowerCase().includes(q)))
     .slice().reverse();
 
-  const box = el('#txList');
+  el('#txCount').textContent = list.length ? `${list.length}건` : '';
   if (!list.length) {
-    box.innerHTML = `<div class="empty">거래 내역이 없습니다.<br>
-      <b>+ 추가</b> 를 눌러 매수 내역부터 넣어주세요.</div>`;
+    el('#txList').innerHTML = `<div class="empty">${q ? '검색 결과가 없습니다.'
+      : '거래 내역이 없습니다.<br>아래 <b>거래 추가</b> 를 눌러 시작하세요.'}</div>`;
     return;
   }
-  box.innerHTML = list.map((t) => {
+  el('#txList').innerHTML = list.map((t) => {
     const asset = db.assets[t.ticker] || {};
     const cur = asset.currency || 'USD';
     const total = t.quantity * t.price + (t.side === 'BUY' ? (t.fee || 0) : -(t.fee || 0));
-    return `<div class="tx" data-id="${esc(t.id)}">
-      <span class="side ${t.side}">${t.side === 'BUY' ? '매수' : '매도'}</span>
-      <div style="min-width:0">
-        <div class="name">${esc(asset.name || t.ticker)}
-          <span class="mut" style="font-weight:400">${esc(t.ticker)}</span></div>
-        <div class="meta">${esc(t.date)} · ${num(t.quantity, t.quantity % 1 ? 2 : 0)}주 ×
-          ${price(t.price, cur)} · ${esc(t.account || '기본')}${t.note ? ` · ${esc(t.note)}` : ''}</div>
-      </div>
-      <div class="amt">${price(total, cur)}<div class="meta">${esc(cur)}</div></div>
-    </div>`;
+    return `<button class="row tap" data-id="${esc(t.id)}">
+      <span>
+        <div class="main-txt">${esc(asset.name || t.ticker)}
+          <span class="${t.side === 'BUY' ? 'up' : 'down'}" style="font-size:13px">
+            ${t.side === 'BUY' ? '매수' : '매도'}</span></div>
+        <div class="sub-txt">${esc(t.date)} · ${num(t.quantity, t.quantity % 1 ? 2 : 0)}주 ×
+          ${price(t.price, cur)}${t.account ? ` · ${esc(t.account)}` : ''}</div>
+      </span>
+      <span class="right">
+        <div class="v">${price(total, cur)}</div>
+        <div class="s mut">${esc(cur)}</div>
+      </span>
+    </button>`;
   }).join('');
 }
 
-export function renderTopSub(pf, db, serverMode) {
-  const q = Object.values(db.quotes || {});
-  const newest = q.map((x) => x.asOf).filter(Boolean).sort().pop();
-  const srcs = [...new Set(q.map((x) => x.source).filter(Boolean))];
-  el('#topSub').textContent =
-    `${pf.positions.length}종목 · 시세 ${relTime(newest)}${srcs.length ? ` · ${srcs.slice(0, 2).join(',')}` : ''}${serverMode ? ' · 서버연결' : ''}`;
+// ─────────────────────────────── 종목 검색 결과
+export function renderPickResults(results, query) {
+  if (!results.length) {
+    el('#pickResults').innerHTML = query
+      ? `<div class="empty">사전에 없는 종목입니다.<br>
+           <b>${esc(query)}</b> 를 티커로 그대로 쓰려면 아래를 누르세요.
+           <div style="margin-top:12px"><button class="btn-plain strong" data-use-raw="${esc(query)}">
+             "${esc(query)}" 직접 등록</button></div></div>`
+      : '<div class="empty">종목 이름이나 코드를 입력하세요.</div>';
+    return;
+  }
+  el('#pickResults').innerHTML = results.map((r) => `
+    <button class="pick-row" data-pick='${esc(JSON.stringify(r))}'>
+      <span class="flag">${esc(r.country)}</span>
+      <span style="flex:1;min-width:0">
+        <div class="main-txt">${esc(r.name)}${r.owned ? ' <span class="pill">보유</span>' : ''}</div>
+        <div class="sub-txt">${esc(r.ticker)}${r.english ? ` · ${esc(r.english)}` : ''} · ${esc(r.sector)}</div>
+      </span>
+    </button>`).join('');
 }
-
-export { countryLabel };

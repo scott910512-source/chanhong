@@ -69,8 +69,8 @@ export function sampleDB() {
       enabled: true, tolerance: 5,
       items: {
         KR: { mode: 'weight', target: 30 },
-        US: { mode: 'weight', target: 55, min: 45, max: 62 },
-        VN: { mode: 'weight', target: 15, tolerance: 3 },
+        US: { mode: 'weight', target: 55 },
+        VN: { mode: 'weight', target: 15 },
       },
     },
     sector: {
@@ -80,8 +80,8 @@ export function sampleDB() {
         '가전/전장': { mode: 'weight', target: 10 },
         IT하드웨어: { mode: 'weight', target: 22 },
         '소비재/클라우드': { mode: 'weight', target: 16 },
-        자동차: { mode: 'weight', target: 17, max: 20, note: '변동성 커서 상한 강제' },
-        IT서비스: { mode: 'weight', target: 15, min: 13 },
+        자동차: { mode: 'weight', target: 17 },
+        IT서비스: { mode: 'weight', target: 15 },
       },
     },
     ticker: {

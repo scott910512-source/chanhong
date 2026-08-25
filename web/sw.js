@@ -1,7 +1,7 @@
 // 서비스워커 - 앱 껍데기를 캐시해서 비행기 모드에서도 켜지게 한다.
 // 데이터(거래·설정)는 localStorage/IndexedDB 에 있으므로 여기서는 다루지 않는다.
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = `portfolio-shell-${VERSION}`;
 const SHELL = [
   './',
@@ -14,6 +14,7 @@ const SHELL = [
   './js/quotes.js',
   './js/ui.js',
   './js/util.js',
+  './js/tickers.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-maskable-512.png',

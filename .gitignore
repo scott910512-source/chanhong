@@ -6,6 +6,7 @@ venv/
 
 # 실행하면서 생기는 시세 캐시 (quotes.seed.json 은 데모용이라 커밋)
 data/cache/quotes.json
+data/cache/actions-quotes.json
 
 # 생성물
 web/dashboard.html

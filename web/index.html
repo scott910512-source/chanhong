@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0e1117">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2f7">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
 <meta name="description" content="찬홍팍의 보유 주식과 국가별·섹터별 비중을 관리하는 앱">
 <title>찬홍팍 주식관리</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,192 +17,148 @@
 </head>
 <body>
 
-<header class="topbar">
-  <div class="brand">
-    <img class="logo" src="icons/icon-192.png" alt="" width="30" height="30">
-    <div>
-      <h1>찬홍팍</h1>
-      <p id="topSub" class="sub">불러오는 중…</p>
+<header class="nav">
+  <div class="nav-bar">
+    <h1>찬홍팍</h1>
+    <div class="nav-actions">
+      <button id="btnInstall" class="btn-plain" hidden>설치</button>
+      <button id="btnAdd" class="btn-add" aria-label="거래 추가">추가</button>
     </div>
   </div>
-  <div class="top-actions">
-    <button id="btnInstall" class="btn ghost" hidden>설치</button>
-    <button id="btnAdd" class="btn primary">+ 추가</button>
+  <div class="seg">
+    <button class="seg-item on" data-screen="home">현황</button>
+    <button class="seg-item" data-screen="trades">거래</button>
+    <button class="seg-item" data-screen="settings">설정</button>
   </div>
 </header>
 
-<nav class="tabs" role="tablist">
-  <button class="tab active" data-screen="home" role="tab">현황</button>
-  <button class="tab" data-screen="trades" role="tab">거래</button>
-  <button class="tab" data-screen="settings" role="tab">설정</button>
-</nav>
-
 <main>
-  <!-- ─────────────── 현황 ─────────────── -->
-  <section id="screen-home" class="screen active">
-    <div id="alerts"></div>
+  <!-- ══════════ 현황 ══════════ -->
+  <section id="screen-home" class="screen on">
+    <div id="summary" class="summary"></div>
+    <div id="statusBar"></div>
 
-    <div id="kpis" class="kpis"></div>
+    <p class="group-title">내 종목 <span id="posCount" class="tail"></span></p>
+    <div id="listPositions" class="group"></div>
+    <div id="warnTicker"></div>
 
-    <section class="card">
-      <div class="card-head">
-        <h2>보유 주식 현황</h2>
-        <div class="head-actions">
-          <button id="btnRefresh" class="btn small">시세 새로고침</button>
-        </div>
-      </div>
-      <p class="hint">현재가 숫자를 누르면 직접 고칠 수 있습니다.</p>
-      <div class="scroll-x"><table id="tblPositions"></table></div>
-    </section>
+    <p class="group-title">국가별 비중</p>
+    <div id="listCountry" class="group"></div>
+    <div id="warnCountry"></div>
 
-    <section class="card">
-      <div class="card-head">
-        <h2>관리 현황</h2>
-        <div class="head-actions">
-          <label class="switch">
-            <input type="checkbox" id="chkBypass" checked>
-            <span>예외 적용</span>
-          </label>
-        </div>
-      </div>
-      <div id="dimChips" class="chips"></div>
-      <div class="scroll-x"><table id="tblBreakdown"></table></div>
-      <p id="dimHint" class="hint"></p>
-    </section>
+    <p class="group-title">섹터별 비중</p>
+    <div id="listSector" class="group"></div>
+    <div id="warnSector"></div>
 
-    <section class="card">
-      <div class="card-head"><h2>매매 안내</h2></div>
-      <div id="plan"></div>
-      <details id="signalsBox">
-        <summary>판정 전체 보기 (예외 처리된 항목 포함)</summary>
-        <div class="scroll-x"><table id="tblSignals"></table></div>
-      </details>
-    </section>
+    <div class="group-foot">
+      <button id="btnRefresh" class="btn-plain wide">시세 새로고침</button>
+    </div>
   </section>
 
-  <!-- ─────────────── 거래 ─────────────── -->
+  <!-- ══════════ 거래 ══════════ -->
   <section id="screen-trades" class="screen">
-    <section class="card">
-      <div class="card-head">
-        <h2>매매 이력</h2>
-        <div class="head-actions">
-          <button id="btnAdd2" class="btn primary small">+ 추가</button>
-        </div>
-      </div>
-      <div class="filters">
-        <input id="txSearch" class="input" type="search" placeholder="종목·계좌·메모 검색">
-        <select id="txFilterTicker" class="input"></select>
-      </div>
-      <div id="txList" class="tx-list"></div>
-    </section>
+    <div class="search-wrap">
+      <input id="txSearch" class="search" type="search" placeholder="종목·계좌·메모 검색">
+    </div>
+    <p class="group-title">매매 이력 <span id="txCount" class="tail"></span></p>
+    <div id="txList" class="group"></div>
+    <div class="group-foot">
+      <button id="btnAdd2" class="btn-plain wide">거래 추가</button>
+    </div>
   </section>
 
-  <!-- ─────────────── 설정 ─────────────── -->
+  <!-- ══════════ 설정 ══════════ -->
   <section id="screen-settings" class="screen">
-    <section class="card">
-      <div class="card-head"><h2>목표 설정</h2></div>
-      <p class="hint">
-        비중 %, 투자금액, 주 수량 중에 골라서 목표를 걸 수 있습니다.
-        허용오차를 벗어나면 현황 화면에 매수·매도 안내가 뜹니다.
-      </p>
-      <div id="targetEditor"></div>
-      <button id="btnAddTarget" class="btn small">+ 목표 추가</button>
-    </section>
+    <p class="group-title">국가별 목표 비중</p>
+    <div id="setCountry" class="group"></div>
+    <p class="group-hint">합이 100%가 되게 넣으면 편합니다. 비워두면 그 국가는 판정하지 않습니다.</p>
 
-    <section class="card">
-      <div class="card-head"><h2>종목 단위 안전장치</h2></div>
-      <div id="rulesEditor" class="grid-form"></div>
-    </section>
+    <p class="group-title">섹터별 목표 비중</p>
+    <div id="setSector" class="group"></div>
 
-    <section class="card">
-      <div class="card-head"><h2>예외 처리 (바이패스)</h2></div>
-      <p class="hint">안내를 무시할 항목. 기간이 지나면 자동으로 다시 감시합니다.</p>
-      <div id="bypassEditor"></div>
-      <button id="btnAddBypass" class="btn small">+ 예외 추가</button>
-    </section>
+    <p class="group-title">종목별 목표</p>
+    <div id="setTicker" class="group"></div>
+    <p class="group-hint">종목은 비중%·투자금액·주 수량 중에 골라서 걸 수 있습니다.</p>
 
-    <section class="card">
-      <div class="card-head"><h2>종목 마스터</h2></div>
-      <p class="hint">국가·통화·섹터를 정해줘야 국가별/섹터별 비중이 제대로 나옵니다.</p>
-      <div id="assetEditor"></div>
-      <button id="btnAddAsset" class="btn small">+ 종목 추가</button>
-    </section>
+    <p class="group-title">시세</p>
+    <div id="setQuotes" class="group"></div>
 
-    <section class="card">
-      <div class="card-head"><h2>환율</h2></div>
-      <p class="hint">자동으로 못 받으면 여기서 직접 넣으세요. (1 외화 = ? 원)</p>
-      <div id="fxEditor" class="grid-form"></div>
-    </section>
+    <p class="group-title">더보기</p>
+    <div class="group">
+      <button class="row tap" data-open="rules"><span>매매 안전장치</span><span class="chev">›</span></button>
+      <button class="row tap" data-open="bypass"><span>예외 처리</span><span class="chev">›</span></button>
+      <button class="row tap" data-open="assets"><span>종목 정보</span><span class="chev">›</span></button>
+      <button class="row tap" data-open="fx"><span>환율</span><span class="chev">›</span></button>
+      <button class="row tap" data-open="data"><span>데이터 백업·복원</span><span class="chev">›</span></button>
+    </div>
 
-    <section class="card">
-      <div class="card-head"><h2>시세 API</h2></div>
-      <p class="hint">
-        브라우저는 CORS 때문에 아무 API나 못 부릅니다. 아래 무료 키를 넣으면
-        폰에서 바로 실시간 시세가 붙습니다. 안 넣어도 현재가를 직접 입력하면 됩니다.
-      </p>
-      <div id="apiKeyEditor" class="grid-form"></div>
-      <div id="providerStatus" class="prov-list"></div>
-    </section>
-
-    <section class="card">
-      <div class="card-head"><h2>데이터 백업 · 복원</h2></div>
-      <p class="hint" id="storageInfo"></p>
-      <div class="btn-row">
-        <button id="btnExportJSON" class="btn small">전체 백업(JSON)</button>
-        <button id="btnExportCSV" class="btn small">거래내역 CSV</button>
-        <button id="btnImport" class="btn small">파일 불러오기</button>
-        <button id="btnUndo" class="btn small">되돌리기</button>
-      </div>
-      <div class="btn-row">
-        <button id="btnSample" class="btn small ghost">예시 데이터로 되돌리기</button>
-        <button id="btnClear" class="btn small danger">전체 삭제</button>
-      </div>
-      <input id="fileInput" type="file" accept=".json,.csv,.tsv,.txt" hidden>
-    </section>
-
-    <p class="footnote">
-      데이터는 이 기기의 브라우저 저장소에만 있습니다. 서버로 보내지 않습니다.
-      브라우저 사이트 데이터를 지우면 사라지니 가끔 백업하세요.
-    </p>
+    <p class="foot">데이터는 이 기기에만 저장됩니다. 서버로 보내지 않습니다.</p>
   </section>
 </main>
 
-<!-- ─────────────── 입력 시트 ─────────────── -->
+<!-- ══════════ 거래 입력 시트 ══════════ -->
 <div id="sheet" class="sheet" hidden>
-  <div class="sheet-backdrop" data-close></div>
+  <div class="backdrop" data-close></div>
   <div class="sheet-body">
-    <div class="sheet-head">
-      <h3 id="sheetTitle">거래 추가</h3>
-      <button class="btn ghost small" data-close>닫기</button>
+    <div class="sheet-bar">
+      <button class="btn-plain" data-close>취소</button>
+      <b id="sheetTitle">거래 추가</b>
+      <button class="btn-plain strong" id="btnSaveTx">저장</button>
     </div>
-    <form id="txForm" class="grid-form">
-      <label>일자<input name="date" type="date" required></label>
-      <label>구분
-        <select name="side">
-          <option value="BUY">매수</option>
-          <option value="SELL">매도</option>
-        </select>
-      </label>
-      <label class="span2">종목
-        <input name="ticker" list="tickerList" required placeholder="예: AAPL, 005930.KS, FPT.VN" autocomplete="off">
-        <datalist id="tickerList"></datalist>
-      </label>
-      <label>수량(주)<input name="quantity" type="text" inputmode="decimal" required placeholder="10"></label>
-      <label id="priceLabel">단가<input name="price" type="text" inputmode="decimal" required placeholder="0"></label>
-      <label>수수료<input name="fee" type="text" inputmode="decimal" placeholder="0"></label>
-      <label>계좌<input name="account" list="accountList" placeholder="키움" autocomplete="off">
-        <datalist id="accountList"></datalist>
-      </label>
-      <label class="span2">메모<input name="note" placeholder="선택"></label>
-      <p id="txPreview" class="preview span2"></p>
-      <div class="sheet-actions span2">
-        <button type="button" id="btnDeleteTx" class="btn danger small" hidden>삭제</button>
-        <button type="submit" class="btn primary">저장</button>
+
+    <!-- 1단계: 종목 고르기 -->
+    <div id="pickStep">
+      <div class="search-wrap">
+        <input id="pickSearch" class="search" type="search" autocomplete="off"
+               placeholder="종목 검색 (삼성, apple, 005930, ㅅㅅㅈㅈ)">
+      </div>
+      <div id="pickResults" class="group"></div>
+    </div>
+
+    <!-- 2단계: 내용 입력 -->
+    <form id="txForm" hidden>
+      <button type="button" id="pickedChip" class="picked"></button>
+      <div class="group">
+        <label class="row"><span>구분</span>
+          <select name="side">
+            <option value="BUY">매수</option>
+            <option value="SELL">매도</option>
+          </select>
+        </label>
+        <label class="row"><span>일자</span><input name="date" type="date" required></label>
+        <label class="row"><span>수량</span>
+          <input name="quantity" type="text" inputmode="decimal" placeholder="0" required></label>
+        <label class="row"><span id="priceLabel">단가</span>
+          <input name="price" type="text" inputmode="decimal" placeholder="0" required></label>
+        <label class="row"><span>수수료</span>
+          <input name="fee" type="text" inputmode="decimal" placeholder="0"></label>
+        <label class="row"><span>계좌</span>
+          <input name="account" list="accountList" placeholder="키움" autocomplete="off">
+          <datalist id="accountList"></datalist></label>
+        <label class="row"><span>메모</span><input name="note" placeholder="선택"></label>
+      </div>
+      <p id="txPreview" class="group-hint"></p>
+      <div class="group-foot">
+        <button type="button" id="btnDeleteTx" class="btn-plain wide danger" hidden>이 거래 삭제</button>
       </div>
     </form>
   </div>
 </div>
 
+<!-- ══════════ 더보기 시트 ══════════ -->
+<div id="moreSheet" class="sheet" hidden>
+  <div class="backdrop" data-close-more></div>
+  <div class="sheet-body">
+    <div class="sheet-bar">
+      <span style="width:44px"></span>
+      <b id="moreTitle"></b>
+      <button class="btn-plain strong" data-close-more>완료</button>
+    </div>
+    <div id="moreBody"></div>
+  </div>
+</div>
+
+<input id="fileInput" type="file" accept=".json,.csv,.tsv,.txt" hidden>
 <div id="toast" class="toast"></div>
 
 <script type="module" src="js/app.js"></script>
