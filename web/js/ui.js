@@ -222,7 +222,23 @@ export function renderAlerts(pf, db, extra = []) {
   if (stale.length) {
     items.push({
       kind: 'warn',
-      html: `<b>예시/과거 시세로 계산 중:</b> ${esc(stale.join(', '))} — 실제 값이 아닙니다.`,
+      html: `<b>현재가가 실제 시세가 아닙니다:</b> ${esc(stale.join(', '))} —
+             처음 깔 때 넣어둔 <b>예시 숫자</b>로 계산 중이라 평가금액·손익·비중이 전부 가짜입니다.
+             보유 현황의 현재가를 눌러 직접 고치거나, <b>시세 새로고침</b>을 누르세요.`,
+    });
+  }
+
+  // 환율도 예시값이면 원화 환산이 전부 틀어진다. 시세와 별개로 알려준다.
+  const usedCurrencies = [...new Set(pf.positions.map((p) => p.asset.currency))]
+    .filter((c) => c !== pf.baseCurrency);
+  const fakeFx = usedCurrencies.filter((c) => (db.fx?.sources?.[c] || '') === '예시값');
+  if (fakeFx.length) {
+    const shown = fakeFx.map((c) => `1 ${c} = ${num(db.fx.rates[c], db.fx.rates[c] < 10 ? 4 : 0)} ${pf.baseCurrency}`);
+    items.push({
+      kind: 'warn',
+      html: `<b>환율도 예시값입니다:</b> ${esc(shown.join(' · '))} —
+             <b>시세 새로고침</b>을 누르면 환율은 API 키 없이도 실제 값으로 바뀝니다.
+             (설정 탭 &gt; 환율에서 직접 넣어도 됩니다)`,
     });
   }
   el('#alerts').innerHTML = items
