@@ -133,7 +133,17 @@ main{max-width:1240px;margin:0 auto}
 .toggle button.on{background:var(--card);color:var(--label);box-shadow:var(--sh)}
 
 /* ── 도넛 ── */
-.donut-wrap{display:flex;align-items:center;gap:16px}
+.donut-wrap{display:flex;align-items:center;gap:14px}
+/* 좁은 폰에서는 도넛이 가로폭을 다 먹어서 옆 표가 못 산다. 위아래로 세운다. */
+@media (max-width:379px){
+  .donut-wrap{flex-direction:column;gap:12px}
+}
+/* 폰에서는 도넛을 조금 줄여서 옆 표에 자리를 내준다 */
+@media (max-width:429px){
+  .donut{width:112px;height:112px}
+  .donut svg{width:112px;height:112px}
+  .donut .mid .n{font-size:11.5px}
+}
 .donut{flex:none;position:relative;width:132px;height:132px}
 .donut svg{display:block}
 .donut .mid{
@@ -145,7 +155,9 @@ main{max-width:1240px;margin:0 auto}
 
 /* ── 비중 표 ── */
 .alloc{width:100%;flex:1;min-width:0}
-.alloc-h,.alloc-r{display:grid;grid-template-columns:1fr auto 22px;gap:10px;align-items:center}
+/* 이름 칸에 바닥을 깔아준다. 1fr 만 두면 오른쪽 숫자가 길어질 때
+   이름이 0px 까지 짜부라져서 통째로 사라진다. */
+.alloc-h,.alloc-r{display:grid;grid-template-columns:minmax(72px,1fr) auto 20px;gap:8px;align-items:center}
 .alloc-h{font-size:11px;color:var(--label3);padding:0 0 7px;font-weight:600}
 .alloc-r{padding:8px 0;border-top:1px solid var(--line);font-size:13.5px}
 .alloc-r:first-of-type{border-top:0}
@@ -153,10 +165,10 @@ main{max-width:1240px;margin:0 auto}
 .alloc .sw{width:9px;height:9px;border-radius:3px;flex:none}
 .alloc .sw.none{background:transparent;border:1.5px dashed var(--label3)}
 .alloc .nm span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
-.alloc .vs{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.alloc .vs{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;font-size:12.5px}
 .alloc .vs em{font-style:normal;color:var(--label3);font-weight:500}
 .alloc-sum{
-  display:grid;grid-template-columns:1fr auto 22px;gap:10px;padding-top:9px;margin-top:3px;
+  display:grid;grid-template-columns:minmax(72px,1fr) auto 20px;gap:8px;padding-top:9px;margin-top:3px;
   border-top:1px solid var(--line);font-size:12.5px;color:var(--label2);font-weight:600;
 }
 .mark{
@@ -167,10 +179,14 @@ main{max-width:1240px;margin:0 auto}
 .mark.none{background:var(--label3)}
 
 /* 섹터 막대 */
-.sbar-r{display:grid;grid-template-columns:70px 1fr auto 22px;gap:10px;align-items:center;
+.sbar-r{display:grid;grid-template-columns:minmax(52px,76px) minmax(26px,1fr) auto 22px;
+  gap:8px;align-items:center;
   padding:9px 0;border-top:1px solid var(--line);font-size:13px}
 .sbar-r:first-of-type{border-top:0}
-.sbar-r .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+/* '소비재/클라우드' 처럼 긴 섹터 이름은 잘라내지 말고 두 줄로 접는다.
+   잘라버리면 무슨 섹터인지 알 수가 없다. */
+.sbar-r .nm{font-weight:500;white-space:normal;overflow-wrap:anywhere;line-height:1.25;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .track{height:8px;border-radius:5px;background:var(--fill);position:relative;overflow:visible}
 .track i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--brand2)}
 .track i.over{background:var(--bad)} .track i.under{background:var(--warn)}
@@ -219,9 +235,15 @@ main{max-width:1240px;margin:0 auto}
 .tip.mute .mk{background:var(--label3)}
 .tip .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tip .amt{flex:none;color:var(--label2);font-size:11.5px}
-/* 한 줄 요약 행: 본문은 눌러서 펴고, 오른쪽 ✕ 로 닫는다 */
+/* 좁은 폰에서는 '이유'가 자리를 뺏어 본문이 잘린다. 이유를 아랫줄로 내린다. */
+@media (max-width:399px){
+  .tip:not(.sum){flex-wrap:wrap}
+  .tip:not(.sum) .tx{white-space:normal;overflow:visible;text-overflow:clip}
+  .tip:not(.sum) .amt{width:100%;padding-left:30px}
+}
 /* 시세를 못 받아 매입가로 친 줄임을 표시 */
 .hold-r .num .atcost{display:block;font-size:10px;color:var(--label3);font-weight:400}
+/* 한 줄 요약 행: 본문은 눌러서 펴고, 오른쪽 ✕ 로 닫는다 */
 .tip.sum{cursor:default}
 .tip.sum .tx{text-align:left;font:inherit;color:inherit;padding:0}
 .tip .tip-rest{color:var(--label2)}

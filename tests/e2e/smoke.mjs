@@ -158,8 +158,9 @@ const shown = await page.evaluate(async () => {
   return { c: document.querySelector('#cardCountry').textContent.replace(/\s+/g, ' '),
     s: document.querySelector('#cardSector').textContent.replace(/\s+/g, ' '), bars };
 });
+// 좁은 칸이라 만/억으로 줄여 쓴다. 뜻은 그대로.
 ok('투자금액 목표는 금액으로 뜬다 (5000000% 아님)',
-  shown.c.includes('5,000,000 KRW') && !shown.c.includes('5000000%'), shown.c.slice(0, 110));
+  shown.c.includes('500만') && !shown.c.includes('5000000%'), shown.c.slice(0, 110));
 ok('비중 목표는 그대로 %로 뜬다', shown.c.includes('40%'));
 ok('주수 목표는 주로 뜬다 (120% 아님)',
   shown.s.includes('120주') && !shown.s.includes('120%'), shown.s.slice(0, 110));
@@ -616,6 +617,67 @@ ok('시세를 못 받은 종목은 총 자산에서 사라지지 않는다',
 ok('그 줄은 매입가 기준임을 밝힌다', (await txt('#cardHoldings')).includes('매입가'),
   (await txt('#cardHoldings')).slice(0, 90));
 ok('시세 없음을 상태줄이 알린다', (await txt('#statusBar')).includes('시세 없음'), await txt('#statusBar'));
+
+// ═══════════ 22. 좁은 폰에서 글자 잘림
+// 320px 짜리 폰에 최악에 가까운 내용(긴 섹터 이름, 백만 단위 주 수,
+// 단위가 뒤섞인 목표)을 넣고 잘리는 글자가 있는지 본다.
+g('좁은 폰 글자 잘림');
+for (const [label, w] of [['320px', 320], ['360px', 360], ['390px', 390]]) {
+  const c = await browser.newContext({
+    viewport: { width: w, height: 900 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+  });
+  const np = await c.newPage();
+  watch(np, `폰${w}`);
+  await np.goto(`http://localhost:${PORT}/index.html`);
+  await wait(1200);
+  if (await np.locator('#wcSkip').isVisible().catch(() => false)) { await np.tap('#wcSkip'); await wait(400); }
+  await np.evaluate(() => {
+    const d = JSON.parse(localStorage.getItem('chanhong.portfolio.v1'));
+    d.assets = { ...d.assets,
+      'VIC.VN': { name: '빈그룹', country: 'VN', currency: 'VND', sector: '소비재/클라우드' },
+      '005930.KS': { name: '삼성전자', country: 'KR', currency: 'KRW', sector: '반도체' },
+      TSLA: { name: '테슬라', country: 'US', currency: 'USD', sector: '자동차' } };
+    d.transactions = [
+      { id: 'a', date: '2026-01-02', ticker: '005930.KS', side: 'BUY', quantity: 1234, price: 66666, fee: 0, account: '기본' },
+      { id: 'b', date: '2026-01-02', ticker: 'VIC.VN', side: 'BUY', quantity: 1234567, price: 41000, fee: 0, account: '기본' },
+      { id: 'c', date: '2026-01-02', ticker: 'TSLA', side: 'BUY', quantity: 12.5, price: 250.75, fee: 0, account: '기본' }];
+    d.targets = {
+      country: { enabled: true, tolerance: 5, items: { KR: { mode: 'weight', target: 33.3 },
+        US: { mode: 'amount', target: 123456789 }, VN: { mode: 'shares', target: 1500000 },
+        JP: { mode: 'weight', target: 10 } } },
+      sector: { enabled: true, tolerance: 5, items: { '소비재/클라우드': { mode: 'amount', target: 5000000 },
+        반도체: { mode: 'shares', target: 1200 }, 자동차: { mode: 'weight', target: 12.5 } } } };
+    localStorage.setItem('chanhong.portfolio.v1', JSON.stringify(d));
+  });
+  await np.reload();
+  await wait(1300);
+  if (await np.locator('#wcSkip').isVisible().catch(() => false)) { await np.tap('#wcSkip'); await wait(400); }
+
+  for (const basis of ['amount', 'shares']) {
+    await np.tap(`#cardCountry [data-basis="${basis}"]`);
+    await wait(250);
+    await np.evaluate(() => document.querySelector('#topWarn [data-expand]')?.click());
+    await wait(250);
+    const r = await np.evaluate(() => {
+      // 가로로 넘쳤거나(한 줄) 세로로 넘쳤으면(여러 줄) 글자가 잘린 것
+      const isCut = (e) => e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1;
+      const out = [];
+      const add = (where, e) => { if (e && isCut(e)) out.push(`${where} "${(e.textContent || '').trim()}"`); };
+      for (const x of document.querySelectorAll('#cardCountry .alloc-r')) add('국가', x.querySelector('.nm span'));
+      for (const x of document.querySelectorAll('#cardSector .sbar-r')) add('섹터', x.querySelector('.nm'));
+      for (const x of document.querySelectorAll('#cardHoldings .hold-r')) {
+        add('보유이름', x.querySelector('.n1')); add('보유코드', x.querySelector('.n2'));
+      }
+      // 접힌 한 줄 요약(.sum)은 원래 말줄임이 정상이라 뺀다
+      for (const x of document.querySelectorAll('#topWarn .tip:not(.sum)')) add('안내', x.querySelector('.tx'));
+      return { cuts: out, over: document.documentElement.scrollWidth > window.innerWidth + 1 };
+    });
+    const b = basis === 'amount' ? '금액' : '수량';
+    ok(`${label} ${b} 기준: 잘리는 글자 없음`, r.cuts.length === 0, r.cuts.join(' / '));
+    ok(`${label} ${b} 기준: 가로 스크롤 없음`, !r.over);
+  }
+  await c.close();
+}
 
 // ═══════════ 마무리
 console.log('\n════════════════════════════════════');

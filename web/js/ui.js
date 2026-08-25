@@ -83,11 +83,9 @@ export function renderCountryCard(pf, db, basis) {
 // 무슨 기준으로 보고 있는지 알 수가 없다.
 function centerOf(items, pf, basis) {
   if (basis === 'shares') {
-    const q = items.reduce((s, i) => s + i.shares, 0);
-    return { t: '총 보유', n: `${num(q, q % 1 ? 2 : 0)}주` };
+    return { t: '총 보유', n: shortShares(items.reduce((s, i) => s + i.shares, 0)) };
   }
-  const unit = pf.baseCurrency === 'KRW' ? '원' : ` ${pf.baseCurrency}`;
-  return { t: '총 자산', n: `${num(pf.totalValue)}${unit}` };
+  return { t: '총 자산', n: shortMoney(pf.totalValue, pf.baseCurrency) };
 }
 
 // 열 제목도 같이 바뀌어야 헷갈리지 않는다
@@ -220,16 +218,39 @@ function allocItems(pf, db, dim, basis) {
   return [...top, ...missing];
 }
 
+// 좁은 폰에서 이 칸이 길어지면 옆의 종목·국가 이름이 통째로 잘린다.
+// 뜻이 안 변하는 선에서 최대한 짧게 쓴다.
+const shortPct = (v) => `${String(Math.round(v * 10) / 10).replace(/\.0$/, '')}%`;
+
+function shortMoney(v, baseCurrency) {
+  const a = Math.abs(v);
+  if (baseCurrency === 'KRW') {
+    if (a >= 1e8) return `${String(Math.round((v / 1e8) * 10) / 10).replace(/\.0$/, '')}억`;
+    if (a >= 1e4) return `${String(Math.round((v / 1e4) * 10) / 10).replace(/\.0$/, '')}만`;
+  }
+  return `${num(v)}${baseCurrency === 'KRW' ? '원' : ` ${baseCurrency}`}`;
+}
+
+// 베트남 주식처럼 주 수가 백만 단위로 가면 이 칸만으로 줄이 다 찬다
+function shortShares(v, digits = 2) {
+  const a = Math.abs(v);
+  if (a >= 1e8) return `${String(Math.round((v / 1e8) * 10) / 10).replace(/\.0$/, '')}억주`;
+  if (a >= 1e4) return `${String(Math.round((v / 1e4) * 10) / 10).replace(/\.0$/, '')}만주`;
+  return `${num(v, v % 1 ? digits : 0)}주`;
+}
+
 // 보는 기준(금액/수량)에 맞춘 '지금 값'
 function curText(it, basis) {
-  if (basis === 'shares') return `${num(it.shares, it.shares % 1 ? 2 : 0)}주`;
-  return `${it.weight.toFixed(1)}%`;
+  if (basis === 'shares') return shortShares(it.shares);
+  return shortPct(it.weight);
 }
 
 // 목표는 걸어둔 단위 그대로 (비중 % / 투자금액 / 주 수)
 function tgtText(it, baseCurrency) {
   if (it.target === null) return '—';
-  return formatValue(it.target, it.targetMode, baseCurrency);
+  if (it.targetMode === 'weight') return shortPct(it.target);
+  if (it.targetMode === 'amount') return shortMoney(it.target, baseCurrency);
+  return shortShares(it.target);
 }
 
 // 막대·눈금은 %일 때만 서로 비교가 된다. 금액/주수 목표를 %자리에 그리면
@@ -259,9 +280,8 @@ function sumRow(items, basis, cols) {
   const style = cols ? ` style="grid-template-columns:${cols}"` : '';
   let text;
   if (basis === 'shares') {
-    const q = items.reduce((s, i) => s + i.shares, 0);
     // 주 수는 종목마다 단위가 달라서(1주 vs 100주) 목표 합을 더해봐야 뜻이 없다
-    text = `${num(q, q % 1 ? 2 : 0)}주 / —`;
+    text = `${shortShares(items.reduce((s, i) => s + i.shares, 0))} / —`;
   } else {
     const now = items.reduce((s, i) => s + i.weight, 0);
     // 비중 목표끼리만 더한다. 금액·주수 목표를 섞어 더하면 엉뚱한 수가 나온다
@@ -269,6 +289,8 @@ function sumRow(items, basis, cols) {
     const tgt = pct.reduce((s, i) => s + (i.target || 0), 0);
     text = `${now.toFixed(0)}% / ${tgt ? `${tgt.toFixed(0)}%` : '—'}`;
   }
+  // 목표를 안 건 항목만 있으면 합계가 '/ —' 로 붙어 자리만 먹는다
+  text = text.replace(' / —', '');
   return `<div class="alloc-sum"${style}>
     <span>합계</span>${cols ? '<span></span>' : ''}
     <span style="text-align:right">${text}</span>
@@ -378,7 +400,7 @@ export function renderTopWarnings(pf, signals, { expanded = false, hidden = fals
     const top = plan[0];
     const sell = top?.action === 'SELL';
     const head = top
-      ? `<b>${esc(top.label)}</b> ${ACTION[top.action]} ${num(top.amountBase)}`
+      ? `<b>${esc(top.label)}</b> ${ACTION[top.action]} ${shortMoney(top.amountBase, pf.baseCurrency)}`
       : `예외 처리 <b>${bypassed.length}건</b>`;
     const rest = total > 1 ? ` <span class="tip-rest">외 ${total - 1}건</span>` : '';
     box.innerHTML = `<div class="tips">
@@ -399,7 +421,7 @@ export function renderTopWarnings(pf, signals, { expanded = false, hidden = fals
     return `<button class="tip ${sell ? 'sell' : 'buy'}" data-jump="${esc(i.ticker)}">
       <span class="mk">${sell ? '−' : '+'}</span>
       <span class="tx"><b>${esc(i.label)}</b> ${ACTION[i.action]}
-        ${num(i.amountBase)}${i.shares ? ` · ${num(i.shares, 1)}주` : ''}</span>
+        ${shortMoney(i.amountBase, pf.baseCurrency)}${i.shares ? ` · ${shortShares(i.shares, 1)}` : ''}</span>
       <span class="amt">${esc(why + more)}</span></button>`;
   }).join('');
   const byRow = bypassed.length
