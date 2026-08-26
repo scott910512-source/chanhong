@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-08-26T16:16:33.314105+00:00",
+ "generatedAt": "2026-08-26T18:13:54.275072+00:00",
  "baseCurrency": "KRW",
  "quotes": {
   "005930.KS": {
@@ -7,35 +7,35 @@
    "previousClose": 257000.0,
    "currency": "KRW",
    "source": "Yahoo 자동수집(naver)",
-   "asOf": "2026-08-26T16:16:18.025680+00:00"
+   "asOf": "2026-08-26T18:13:39.187158+00:00"
   },
   "066570.KS": {
    "price": 200500.0,
    "previousClose": 200500.0,
    "currency": "KRW",
    "source": "Yahoo 자동수집(naver)",
-   "asOf": "2026-08-26T16:16:18.026940+00:00"
+   "asOf": "2026-08-26T18:13:39.182503+00:00"
   },
   "AAPL": {
-   "price": 313.53,
+   "price": 312.89,
    "previousClose": 309.9,
    "currency": "USD",
    "source": "Yahoo 자동수집(naver_global)",
-   "asOf": "2026-08-26T16:16:17.982539+00:00"
+   "asOf": "2026-08-26T18:13:39.130797+00:00"
   },
   "AMZN": {
-   "price": 258.64,
+   "price": 258.98,
    "previousClose": 261.06,
    "currency": "USD",
    "source": "Yahoo 자동수집(naver_global)",
-   "asOf": "2026-08-26T16:16:17.980236+00:00"
+   "asOf": "2026-08-26T18:13:39.127640+00:00"
   },
   "TSLA": {
-   "price": 343.95,
-   "previousClose": 350.25,
+   "price": 344.77,
+   "previousClose": 350.26,
    "currency": "USD",
    "source": "Yahoo 자동수집(naver_global)",
-   "asOf": "2026-08-26T16:16:17.981393+00:00"
+   "asOf": "2026-08-26T18:13:39.129553+00:00"
   }
  },
  "fx": {
