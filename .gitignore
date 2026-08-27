@@ -19,3 +19,4 @@ data/settings.overrides.json
 # 아이콘 재생성할 때만 쓰는 playwright
 node_modules/
 package-lock.json
+검산용.xlsx
