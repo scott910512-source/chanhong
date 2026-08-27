@@ -1,0 +1,5 @@
+# SOP Word 일괄변경 도구 - 필요한 외부 패키지
+# (tkinter, json, os, shutil, threading 등 표준 라이브러리는 적지 않습니다)
+
+pywin32>=306        # Microsoft Word COM 제어 (Windows 전용)
+pyinstaller>=6.0    # EXE 빌드용
